@@ -1,5 +1,5 @@
-import Navbar from '@/components/Navbar';
 import './globals.css';
+import Navbar from '../components/Navbar';
 
 export const metadata = {
   title: 'My Blog',
@@ -8,9 +8,11 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="bg-white dark:bg-black text-gray-900 dark:text-white min-h-screen">
         <Navbar />
-        {children}
+        <main className="p-8">
+          {children}
+        </main>
       </body>
     </html>
   );
