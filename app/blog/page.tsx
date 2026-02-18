@@ -1,8 +1,10 @@
 import Link from "next/link"
 
 // Import each MDX article
-import * as helloWorld from "./ephemeral/page.mdx"
-import * as secondPost from "./mdx/page.mdx"
+import * as ephemeral from "./ephemeral/page.mdx"
+import * as mdx from "./mdx/page.mdx"
+import * as hosting from "./hosting/page.mdx"
+import * as tfstate from "./tfstate/page.mdx"
 
 type Post = {
   slug: string
@@ -15,15 +17,27 @@ type Post = {
 const posts: Post[] = [
   {
     slug: "ephemeral",
-    title: helloWorld.meta.title,
-    date: new Date(helloWorld.meta.date),
-    excerpt: helloWorld.meta.excerpt,
+    title: ephemeral.meta.title,
+    date: new Date(ephemeral.meta.date),
+    excerpt: ephemeral.meta.excerpt,
   },
   {
     slug: "mdx",
-    title: secondPost.meta.title,
-    date: new Date(secondPost.meta.date),
-    excerpt: secondPost.meta.excerpt,
+    title: mdx.meta.title,
+    date: new Date(mdx.meta.date),
+    excerpt: mdx.meta.excerpt,
+  },
+    {
+    slug: "hosting",
+    title: hosting.meta.title,
+    date: new Date(hosting.meta.date),
+    excerpt: hosting.meta.excerpt,
+  },
+    {
+    slug: "tfstate",
+    title: tfstate.meta.title,
+    date: new Date(tfstate.meta.date),
+    excerpt: tfstate.meta.excerpt,
   }
 ].sort((a, b) => b.date.getTime() - a.date.getTime()) // newest first
 
