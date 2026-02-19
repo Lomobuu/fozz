@@ -4,10 +4,94 @@ export const meta = {
   excerpt: "Storage of terraform.tfstate inside Azure Storage Account to store state configuration",
 }
 
-# My Second Post
+# Simple Terraform state storage in Azure
 
-This is my first blog post, written in **MDX**.
+Terraform state is a file that records the infrastructure resources Terraform manages and maps them to your real cloud environment. 
+Storing this state locally can lead to conflicts and risks in team setups. 
+Using remote state storage in Azure, typically with Azure Blob Storage, provides centralized, secure state management with locking and better collaboration.
 
-It supports Markdown, JSX, and Tailwind out of the box.
+<BlogImage 
+  src="/state.jpg" 
+  alt="Terraform state diagram"
+  size="large" 
+/>
 
-You are reading the full article here.
+## Remote State
+
+Using remote state in Azure lets the whole team, as well as GitHub action workflows, access the state.
+
+<BlogImage 
+  src="/azurestorage.png" 
+  alt="Azure storage account for Terraform state"
+  size="small" 
+/>
+
+# Automatic setup with Service principal & workflow
+
+## Initial Setup (Service Principal + workflow)
+
+1. Create a Resource Group in Azure
+2. Create a Service Principal in Azure
+3. Set up Role Assignment
+4. Set up Authentication via federated Credentials
+5. Configure Secrets in GitHub Actions
+6. Create Storage Account & Container via GitHub Actions workflow
+
+### backend.yaml
+```yaml
+on: workflow_dispatch
+
+name: BackendStorageCreate
+
+permissions:
+  id-token: write # Require write permission to Fetch an OIDC token.
+
+env:
+  location: "westeurope"
+  terraformStorageRG: 'RG-Fozzen-Management-weu'
+  terraformStorageAccount: 'safozzenmanagementweu'
+  containerNameBackend: 'tfstate'
+  backendAzureRmKey: 'terraform.tfstate'
+
+jobs:
+
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Azure CLI script
+      uses: azure/cli@v2
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az group create --location $location --name $terraformStorageRG
+          
+          az storage account create --name $terraformStorageAccount --resource-group $terraformStorageRG --location $location --sku Standard_LRS
+          
+          az storage container create --name $containerNameBackend --account-name $terraformStorageAccount
+```
+## Run Terraform with GitHub Actions
+
+- main.tf
+- variables.tf
+- locals.tf
+- terraform.yaml 
+
+# Manual setup in Azure Portal
+
+## Initial Setup (Manual)
+1. Create a Resource Group In Azure
+2. Create a Storage Account
+3. Create a Container
+
+### Links used
+
+[Terraform State Management: Understanding the Foundation of Infrastructure as Codet](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
+
+[How to store Terraform state file in Azure Storage | How to manage Terraform state in Azure Blob Storage | Terraform Remote state in Azure Blob storage | Terraform backend](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)

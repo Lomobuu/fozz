@@ -1,24 +1,18 @@
-import type { MDXComponents } from "mdx/types"
+// mdx-components.tsx
+import type { MDXComponents } from "mdx/types";
+import BlogImage from "@/components/BlogImage";
 
-// Define your components
 export const components: MDXComponents = {
-  wrapper: ({ children }: { children: React.ReactNode }) => (
-    <div className="max-w-3xl mx-auto px-6 py-12 text-center">
-      {children}
-    </div>
-  ),
+  BlogImage,
+  img: (props) => <BlogImage src={props.src ?? ""} alt={props.alt ?? ""} size="large" />,
   a: (props) => (
-    <a
-      {...props}
-      className="text-blue-600 hover:text-blue-800 underline font-medium transition"
-    />
+    <a {...props} className="text-blue-600 hover:text-blue-800 underline font-medium transition" />
   ),
-  h1: (props) => <h1 className="text-4xl font-bold mb-4" {...props} />,
-  h2: (props) => <h2 className="text-3xl font-semibold mb-3" {...props} />,
-  p: (props) => <p className="mb-4 text-lg" {...props} />,
-}
+  h1: (props) => <h1 {...props} className="text-4xl font-bold mt-8 mb-6" />,
+  h2: (props) => <h2 {...props} className="text-3xl font-semibold mt-8 mb-4" />,
+};
 
-// Must export a useMDXComponents function exactly like this
+// Required for Next.js App Router + MDX
 export function useMDXComponents() {
-  return components
+  return components;
 }
