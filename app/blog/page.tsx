@@ -5,6 +5,7 @@ import * as ephemeral from "./ephemeral/page.mdx"
 import * as mdx from "./mdx/page.mdx"
 import * as hosting from "./hosting/page.mdx"
 import * as tfstate from "./tfstate/page.mdx"
+import * as container from "./container/page.mdx"
 
 type Post = {
   slug: string
@@ -32,6 +33,12 @@ const posts: Post[] = [
     title: hosting.meta.title,
     date: new Date(hosting.meta.date),
     excerpt: hosting.meta.excerpt,
+  },
+      {
+    slug: "container",
+    title: container.meta.title,
+    date: new Date(container.meta.date),
+    excerpt: container.meta.excerpt,
   },
     {
     slug: "tfstate",
