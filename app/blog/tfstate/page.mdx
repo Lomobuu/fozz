@@ -27,18 +27,115 @@ Using remote state in Azure lets the whole team, as well as GitHub action workfl
 />
 
 # Automatic setup with Service principal & workflow
+To set up the storage account & container for the state storage we can use a GitHub Actions workflow that will set it up via Azure CLI.
 
 ## Initial Setup (Service Principal + workflow)
 
-1. Create a Resource Group in Azure
-2. Create a Service Principal in Azure
-3. Set up Role Assignment
-4. Set up Authentication via federated Credentials
-5. Configure Secrets in GitHub Actions
-6. Create Storage Account & Container via GitHub Actions workflow
+### [Create a Service Principal in Azure](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal)
+
+<BlogImage 
+  src="/serviceacc.png" 
+  alt="Create service account"
+  size="medium" 
+/>
+
+
+### Set up Role Assignment
+
+<BlogImage 
+  src="/roleassignment1.png" 
+  alt="Create role assignment"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/contributor.png" 
+  alt="Contributor access"
+  size="medium" 
+/>
+
+### Set up Authentication via federated Credentials
+
+For the service account to be able to autenticate with GitHub Actions, we need to set up federated credentials.
+
+
+<BlogImage 
+  src="/fedcred1.png" 
+  alt="Federated Credentials"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred.png" 
+  alt="Federated Credentials"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred2.png" 
+  alt="Federated Credentials"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred3.png" 
+  alt="Federated Credentials"
+  size="medium" 
+/>
+
+
+ 
+### Configure Secrets in GitHub Actions
+
+Note down these 3 IDs:
+- Client ID
+- Tenant ID
+- Subscription ID
+
+<BlogImage 
+  src="/tenantobjid.png" 
+  alt="Tenant and Client ID"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/subid.png" 
+  alt="subscription ID"
+  size="medium" 
+/>
+
+Save them as secrets in GitHub Actions as:
+- AZURE_CLIENT_ID
+- AZURE_TENANT_ID
+- AZURE_SUBSCRIPTION_ID
+
+
+
+<BlogImage 
+  src="/secret1.png" 
+  alt="GHA secret"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/secret2.png" 
+  alt="GHA secret"
+  size="medium" 
+/>
+
+
+
+### Create Storage Account & Container via GitHub Actions workflow
+
+Set up a github actions workflow file which runs azure CLI to create:
+- Resource Group
+- Storage Account
+- Container
+
+Remember to change the resource group & storage account names.
 
 ```yaml:title=backend.yaml
-on: workflow_dispatch
+on: workflow_dispatch # Manual start trigger
 
 name: BackendStorageCreate
 
@@ -47,14 +144,14 @@ permissions:
 
 env:
   location: "westeurope"
-  terraformStorageRG: 'RG-Fozzen-Management-weu'
-  terraformStorageAccount: 'safozzenmanagementweu'
-  containerNameBackend: 'tfstate'
+  terraformStorageRG: <name of resource group>
+  terraformStorageAccount: <name of storage account> # no dashes allowed
+  containerNameBackend: 'tfstate' # Name of container
   backendAzureRmKey: 'terraform.tfstate'
 
 jobs:
 
-  build-and-deploy:
+  setup-terraform-backend:
     runs-on: ubuntu-latest
     steps:
     - name: Azure Login
@@ -75,19 +172,159 @@ jobs:
           
           az storage container create --name $containerNameBackend --account-name $terraformStorageAccount
 ```
+## Manual setup in Azure Portal
+
+If you want to create the tfstate storage manually instead of via GitHub actions workflow
+
+
+###  Create a Resource Group In Azure
+
+<BlogImage 
+  src="/rg.png" 
+  alt="Resource Group"
+  size="medium" 
+/>
+
+###  Create a Storage Account
+
+<BlogImage 
+  src="/strg.png" 
+  alt="Create Storage Account"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/strg2.png" 
+  alt="Create Storage Account"
+  size="medium" 
+/>
+
+
+###  Create a Container
+
+<BlogImage 
+  src="/strg3.png" 
+  alt="Create storage account container"
+  size="medium" 
+/>
+
 ## Run Terraform with GitHub Actions
 
-- main.tf
-- variables.tf
-- locals.tf
-- terraform.yaml 
+### main.tf
+```hcl:main.tf
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "~> 4.6.0"
+    }
+  }
+}
 
-# Manual setup in Azure Portal
+provider "azurerm" {
+}
 
-## Initial Setup (Manual)
-1. Create a Resource Group In Azure
-2. Create a Storage Account
-3. Create a Container
+# Resource Group
+resource "azurerm_resource_group" "rg" {
+  name     = local.rg_name
+  location = var.location
+}
+```
+### variables.tf
+```hcl:variables.tf
+variable "env" {
+  type = string
+  default = "test"
+}
+
+variable "location" {
+  type        = string
+  default = "westeurope"
+}
+```
+### locals.tf
+```hcl:locals.tf
+locals {
+  # Make sure the name is lower case
+  env = lower(var.env)
+
+  # Your base project name
+  base = "simpletst"
+
+  # Resource Group Name (may contain dashes)
+  rg_name = "${local.base}-RG-${local.env}"
+
+}
+```
+### terraform.yaml
+```yaml:terraform.tf
+name: 'Terraform Plan & Apply'
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+    ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }} # Terraform uses variable implicit to authenticate
+    ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }} # Terraform uses variable implicit to authenticate
+    ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }} # Terraform uses variable implicit to authenticate
+    location: westeurope
+    RESOURCE_GROUP: <resource group name> # created via backend.yaml
+    STORAGE_ACCOUNT: <name of storage account where tfstate is stored> # Created via the backend.yaml
+
+jobs:
+  terraform:
+        name: Deploy to Azure
+        runs-on: ubuntu-latest
+        # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+        defaults:
+          run:
+            working-directory: .github/Terraform
+            shell: bash
+
+        steps:
+        # Checkout the repository to the GitHub Actions runner
+        - name: Checkout
+          uses: actions/checkout@v3
+
+        # Install the latest version of Terraform CLI 
+        - name: Setup Terraform
+          uses: hashicorp/setup-terraform@v1
+
+        # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+
+        - name: Terraform Init
+          run: |
+            terraform init \
+              -backend-config="resource_group_name=$RESOURCE_GROUP" \
+              -backend-config="storage_account_name=$STORAGE_ACCOUNT" \
+              -backend-config="container_name=tfstate" \
+              -backend-config="key=terraform.tfstate" \
+              -backend-config="use_oidc=true"
+
+
+        - name: Terraform Format
+          run: terraform fmt -recursive
+
+        # Validate before Planning
+        - name: Terraform Validate
+          run: terraform validate 
+
+
+        - name: Terraform Plan
+          run: terraform plan -input=false -var location=$location -var environment=$environment
+          
+        - name: Terraform Apply
+          run: terraform apply -auto-approve -input=false -var location=$location -var environment=$environment
+```
+
 
 ### Links used
 

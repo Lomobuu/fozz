@@ -7,14 +7,13 @@ permissions:
 
 env:
   location: "westeurope"
-  terraformStorageRG: 'RG-Fozzen-Management-weu'
-  terraformStorageAccount: 'safozzenmanagementweu'
+  terraformStorageRG: 'RG-Fozz-Management-weu'
+  terraformStorageAccount: 'safozzmanagementweu'
   containerNameBackend: 'tfstate'
   backendAzureRmKey: 'terraform.tfstate'
 
 jobs:
-
-  build-and-deploy:
+  setup-terraform-backend:
     runs-on: ubuntu-latest
     steps:
     - name: Azure Login

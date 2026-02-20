@@ -3,7 +3,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 export const metadata = {
-  title: "My Blog",
+  title: "Fozz",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
