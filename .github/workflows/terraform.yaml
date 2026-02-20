@@ -2,9 +2,12 @@ name: 'Terraform Plan & Apply'
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: # Trigger on main branch
+      - main 
+    paths: # Only trigger if infrastructure is changed
+    - '.github/Terraform/**'
+    - '.github/workflows/terraform.yaml'
+  workflow_dispatch: # Optional manual trigger
 
 permissions:
   id-token: write
@@ -59,7 +62,6 @@ jobs:
 
 
         - name: Terraform Plan
-          run: terraform plan -input=false -var location=$location -var environment=$environment
-          
+          run: terraform plan -input=false -var location=$location
         - name: Terraform Apply
-          run: terraform apply -auto-approve -input=false -var location=$location -var environment=$environment
+          run: terraform apply -auto-approve -input=false -var location=$location
