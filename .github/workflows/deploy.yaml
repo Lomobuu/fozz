@@ -1,0 +1,45 @@
+name: Deploy React App to Azure Storage
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+
+env:
+    STORAGE_ACCOUNT: fozzstrgtest # Hardcoded in this example to comply with manual & terraform storage creation
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Use your desired Node.js version
+
+      - name: Install dependencies and build
+        run: |
+          npm install
+          npm run build # This command generates the static files in the 'build' directory (default for Create React App)
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload to Azure Blob Storage
+        uses: azure/CLI@v1 # Use the Azure CLI action
+        with:
+          inlineScript: |
+            # Clear existing files in the $web container
+            az storage blob delete-batch --account-name $STORAGE_ACCOUNT --source '$web' --pattern "*"
+
+            # Upload the new build files
+            az storage blob upload-batch --account-name $STORAGE_ACCOUNT --source build --destination '$web'

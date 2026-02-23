@@ -3,9 +3,12 @@ locals {
   env = lower(var.env)
 
   # Your base project name
-  base = "simpletst"
+  base = "fozz"
 
   # Resource Group Name (may contain dashes)
   rg_name = "${local.base}-RG-${local.env}"
+
+    # Resource Group Name (may contain dashes)
+  strg_name = "${local.base}strg${local.env}"
 
 }
