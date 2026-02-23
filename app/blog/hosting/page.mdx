@@ -273,6 +273,10 @@ After the deployment workflow has run successfully:
 
 ## Create Azure Front Door (Terraform)
 
+Defer to [Simple Terraform state storage in Azure](/blog/tfstate)
+
+add a new resource to the environment:
+
 ### frontdoor.tf
 
 ```hcl:frontdoor.tf
@@ -283,8 +287,66 @@ resource "azurerm_cdn_frontdoor_profile" "frontDoor" {
 }
 ```
 
+## Create Azure Front Door Azure (Manual)
+If you prefer not to automate the infrastructure, you can create everything via the Azure Portal.
+<br/>
+
+<BlogImage 
+  src="/frontdoor1.png" 
+  alt="Result image"
+  size="Large" 
+/>
+
+<BlogImage 
+  src="/frontdoor2.png" 
+  alt="Result image"
+  size="small" 
+/>
+
+
+# Configure Azure Front Door custom domain
+
+
+<BlogImage 
+  src="/frontdoor3.png" 
+  alt="Result image"
+  size="med" 
+/>
+
+<BlogImage 
+  src="/frontdoor4.png" 
+  alt="Result image"
+  size="Large" 
+/>
+
+<BlogImage 
+  src="/frontdoor5.png" 
+  alt="Result image"
+  size="small" 
+/>
+
+<BlogImage 
+  src="/frontdoor7.png" 
+  alt="Result image"
+  size="Large" 
+/>
+
+<BlogImage 
+  src="/frontdoor8.png" 
+  alt="Result image"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/frontdoor9.png" 
+  alt="Result image"
+  size="Large" 
+/>
+
+
 # Configure Godaddy domain to static storage
-To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy & Azure Front Door
+To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy with Azure Front Door endpoint
+
 
 ## Godaddy Configuration
 
@@ -300,13 +362,6 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
   size="medium" 
 />
 
-## Azure Configuration
-
-<BlogImage 
-  src="/godaddy3.png" 
-  alt="Azure config DNS"
-  size="medium" 
-/>
 
 ### Configuring Forwarding
 
