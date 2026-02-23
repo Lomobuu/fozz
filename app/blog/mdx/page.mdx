@@ -1,13 +1,189 @@
 export const meta = {
   title: "MDX",
   date: "2026-02-17",
-  excerpt: "How to set up a markdown blog website using NextJS, tailwindcss and MDX",
+  excerpt: "How to set up a markdown-powered blog using Next.js, Tailwind CSS, and MDX",
+};
+
+# How to Set Up a Markdown Blog Using Next.js, Tailwind CSS, and MDX
+
+This is how I built this website — a fully MDX‑powered blog running on the Next.js App Router.
+
+<br/>
+
+---
+
+# The Stack
+
+- **Next.js** (App Router)
+- **Tailwind CSS**
+- **MDX**
+
+---
+
+# Requirements & Installation
+
+You will need:
+
+- [Node.js](https://nodejs.org/en)
+- Optionally: [nvm](https://www.nvmnode.com/)
+
+Create a new Next.js project:
+
+```
+pnpm create next-app@latest my-app --yes
+```
+Install Tailwind CSS:
+```
+pnpm install tailwindcss @tailwindcss/postcss postcss
+```
+And import it in your global stylesheet:
+```css:title=global.css
+@import "tailwindcss";
+```
+
+---
+
+# Project strucure
+<br/>
+This project uses the Next.js App Router, meaning routing is filesystem-based. Here's the simplified folder layout:
+```bash
+└── project/
+    ├── app/
+    │   ├── blog/
+    │   │    ├── page.tsx
+    │   │    ├── blog1/
+    │   │    │   └── blog1.mdx
+    │   │    └── blog2/
+    │   │         └── blog2.mdx
+    │   ├── page.tsx
+    │   └── layout.tsx
+    ├── tailwind.config.js
+    ├── package.json
+    ├── next.config.ts
+    ├── mdx.d.ts
+    ├── mdx-components.tsx
+    └── components/
+        └── navbar.tsx
+```
+
+### /App
+The app/ folder is the core of routing.
+
+- app/page.tsx → your homepage (/)
+- app/layout.tsx → shared layout (navigation, footers, wrappers)
+### /App/Blog
+The blog system is completely filesystem-driven:
+
+- app/blog/page.tsx → /blog
+  - Each subfolder → a blog post 
+- blog1/blog1.mdx → /blog/blog1
+- blog2/blog2.mdx → /blog/blog2
+
+MDX files act like pages — no extra configuration needed once MDX is set up.
+### /components
+Contains shared UI components such as a navigation bar.
+### Other files
+
+- tailwind.config.t|s - Tailwind CSS configuration
+- next.config.ts - Next.js configuration including MDX setup
+- package.json - dependencies and scripts
+- mdx.d.ts - MDX TypeScript support
+- mdx-components.tsx - overrides and custom components for MDX (links, images, code blocks, etc.)
+
+---
+
+# MDX
+
+
+## install mdx dependencies
+
+```
+pnpm add @next/mdx @mdx-js/loader @mdx-js/react @types/mdx
+```
+
+## Configure next.config.tsx
+
+```tsx:title=next.config.tsx
+import createMDX from '@next/mdx'
+ 
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Configure `pageExtensions` to include markdown and MDX files
+  pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
+  // Optionally, add any other Next.js config below
 }
+ 
+const withMDX = createMDX({
+  extension: /\.(md|mdx)$/,
+})
+ 
+// Merge MDX config with Next.js config
+export default withMDX(nextConfig)
+```
 
-# My First Post
+## Add & Configure mdx-components.tsx 
 
-This is my first blog post, written in **MDX**.
+```tsx:title=mdx-components.tsx
+import type { MDXComponents } from 'mdx/types'
+ 
+const components: MDXComponents = {}
+ 
+export function useMDXComponents(): MDXComponents {
+  return components
+}
+```
 
-It supports Markdown, JSX, and Tailwind out of the box.
+## Create a blog homepage & blog example
+Create a new folder under app called /blog and add a page.tsx. This solution links to the name of your blog folder.
 
-You are reading the full article here.
+### page.tsx
+
+```
+import Link from "next/link";
+
+export default function BlogPage() {
+  const blogs = [
+    {
+      slug: "blog1",
+      title: "Blog 1",
+      description: "An introduction to the first blog post.",
+    },
+    {
+      slug: "blog2",
+      title: "Blog 2",
+      description: "A follow-up blog post with more details.",
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-4xl font-bold">Blog</h1>
+      <p className="text-gray-600">
+        Welcome to the blog section. Here you'll find all published articles.
+      </p>
+
+      <ul className="space-y-4">
+        {blogs.map((blog) => (
+          <li key={blog.slug} className="border p-4 rounded-lg">
+            <Link href={`/blog/${blog.slug}`}>
+              <h2 className="text-2xl font-semibold hover:underline">
+                {blog.title}
+              </h2>
+            </Link>
+            <p className="text-gray-500">{blog.description}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+# Sources used:
+<br/>
+- [Next.js Docs](https://nextjs.org/docs)
+- [Tailwindcss Docs](https://tailwindcss.com/docs/installation/framework-guides/nextjs)
+- [How to use markdown and MDX in Next.js](https://nextjs.org/docs/pages/guides/mdx)
+- [How I Built My Blog (original)](https://www.joshwcomeau.com/blog/how-i-built-my-blog/)
+- [How I Built My Blog](https://www.joshwcomeau.com/blog/how-i-built-my-blog-v2/)
+- [Guide to Writing MDX and Markdown](https://kabartolo.github.io/chicago-docs-demo/docs/mdx-guide/writing/)

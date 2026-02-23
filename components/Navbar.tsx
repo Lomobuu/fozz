@@ -26,7 +26,7 @@ export default function Navbar() {
     <nav className="bg-white dark:bg-black text-gray-900 dark:text-white p-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Left: Logo */}
-        <div className="flex-shrink-0 font-bold text-xl">Fozz</div>
+        <Link href="/" className="flex-shrink-0 font-bold text-xl">Fozz</Link>
 
         {/* Center: Navigation */}
         <div className="flex flex-1 justify-center space-x-6">

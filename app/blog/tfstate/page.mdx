@@ -6,19 +6,64 @@ export const meta = {
 
 # Simple Terraform state storage in Azure
 
-Terraform state is a file that records the infrastructure resources Terraform manages and maps them to your real cloud environment. 
-Storing this state locally can lead to conflicts and risks in team setups. 
-Using remote state storage in Azure, typically with Azure Blob Storage, provides centralized, secure state management with locking and better collaboration.
+<BlogImage 
+  src="/terraformazure.png" 
+  alt="Terraform & Azure"
+  size="large" 
+/>
 
+---
+
+<br/>
+Terraform state is a file that records the infrastructure resources Terraform manages and maps them to your real cloud environment.
+Storing the state locally can easily lead to conflicts, especially when multiple developers or automation pipelines interact with the same infrastructure. Local files also introduce risks such as accidental deletion, overwriting, or inconsistent versions.
+<br/>
+By storing state remotely in Azure — typically inside an Azure Storage Account — you enable centralized, secure, and versioned state management. Remote state also adds capabilities such as state locking, preventing two operations from making changes simultaneously.
+<br/>
+This setup becomes even more important when using CI/CD pipelines like GitHub Actions, where automated workflows must securely retrieve and update the shared Terraform state.
+<br/>
+
+---
+
+## Simple Terraform Dataflow
+
+In its simplest form, Terraform runs locally, performs authentication, deploys resources, and updates the state afterwards.
 <BlogImage 
   src="/state.jpg" 
   alt="Terraform state diagram"
-  size="large" 
+  size="medium" 
+/>
+
+## Local To Azure Terraform Dataflow
+
+When stored locally, this workflow works fine for personal projects but quickly becomes unmanageable for team‑based development.
+
+<BlogImage 
+  src="/state2.jpg" 
+  alt="Terraform state diagram 2"
+  size="medium" 
+/>
+
+## Goal Dataflow: GitHub to Azure Dataflow
+The ideal scenario is a fully automated pipeline:
+<br/>
+GitHub Actions runs Terraform → authenticates via Federated Identity → reads/writes state in Azure → applies changes.
+<br/>
+This removes local machine dependencies entirely. Infrastructure becomes reproducible and consistent, and deployments are performed in a controlled CI/CD environment.
+<br/>
+Moving the local storage to Azure introduces a remote backend, giving you:
+- **Shared access for teams** | Everyone reads and writes from the same state file.
+- **Locking** | Azure Storage provides blob leases, preventing parallel updates.
+- **Versioning** | Storage Accounts automatically keep previous state versions if enabled.
+
+<BlogImage 
+  src="/state3.jpg" 
+  alt="Terraform state diagram 3"
+  size="medium" 
 />
 
 ## Remote State
 
-Using remote state in Azure lets the whole team, as well as GitHub action workflows, access the state.
 
 <BlogImage 
   src="/azurestorage.png" 
@@ -26,9 +71,10 @@ Using remote state in Azure lets the whole team, as well as GitHub action workfl
   size="small" 
 />
 
-# Automatic setup with Service principal & workflow
-To set up the storage account & container for the state storage we can use a GitHub Actions workflow that will set it up via Azure CLI.
+---
 
+# Automatic setup with Service principal & workflow
+A Service Principal acts as an identity for GitHub Actions. Instead of storing client secrets, we will use OIDC authentication, which avoids managing credentials manually.
 ## Initial Setup (Service Principal + workflow)
 
 ### [Create a Service Principal in Azure](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal)
@@ -41,6 +87,8 @@ To set up the storage account & container for the state storage we can use a Git
 
 
 ### Set up Role Assignment
+Assign your Service Principal the minimum access needed — typically Contributor on the resource group responsible for storing the Terraform state.
+This allows Terraform to create or modify the storage account, container, and supporting resources
 
 <BlogImage 
   src="/roleassignment1.png" 
@@ -56,7 +104,8 @@ To set up the storage account & container for the state storage we can use a Git
 
 ### Set up Authentication via federated Credentials
 
-For the service account to be able to autenticate with GitHub Actions, we need to set up federated credentials.
+Federated Credentials let GitHub OIDC tokens authenticate to Azure without storing secrets.
+Each credential maps to a specific GitHub repository and workflow, making access more secure and controlled.
 
 
 <BlogImage 
@@ -87,10 +136,13 @@ For the service account to be able to autenticate with GitHub Actions, we need t
  
 ### Configure Secrets in GitHub Actions
 
-Note down these 3 IDs:
-- Client ID
-- Tenant ID
-- Subscription ID
+Once the Service Principal is created, you need to store IDs so GitHub can authenticate via OIDC:
+
+- Client ID - identifies your Service Principal
+- Tenant ID - identifies your Azure AD tenant
+- Subscription ID - identifies which subscription to operate in
+
+These values are stored in GitHub Actions secrets, not as passwords, but simply as identifiers.
 
 <BlogImage 
   src="/tenantobjid.png" 
@@ -104,7 +156,7 @@ Note down these 3 IDs:
   size="medium" 
 />
 
-Save them as secrets in GitHub Actions as:
+Save them as:
 - AZURE_CLIENT_ID
 - AZURE_TENANT_ID
 - AZURE_SUBSCRIPTION_ID
@@ -127,12 +179,14 @@ Save them as secrets in GitHub Actions as:
 
 ### Create Storage Account & Container via GitHub Actions workflow
 
-Set up a github actions workflow file which runs azure CLI to create:
-- Resource Group
-- Storage Account
-- Container
+This workflow automates the creation of the backend resources.
+Running this once ensures that all required Terraform backend components are consistently deployed.
+You only need to adjust:
 
-Remember to change the resource group & storage account names.
+- Resource group name
+- Storage account name
+
+The rest is handled automatically through Azure CLI commands.
 
 ```yaml:title=backend.yaml
 on: workflow_dispatch # Manual start trigger
@@ -174,8 +228,8 @@ jobs:
 ```
 ## Manual setup in Azure Portal
 
-If you want to create the tfstate storage manually instead of via GitHub actions workflow
-
+If you prefer not to automate the initial backend setup, you can create everything directly via the Azure Portal.
+<br/>
 
 ###  Create a Resource Group In Azure
 
@@ -209,6 +263,9 @@ If you want to create the tfstate storage manually instead of via GitHub actions
 />
 
 ## Run Terraform with GitHub Actions
+
+This section configures Terraform so that GitHub Actions performs all deployment steps: init, validate, plan, and apply.
+By referencing the resource group and storage account created earlier, Terraform can connect to the remote backend automatically.
 
 ### main.tf
 ```hcl:main.tf
@@ -259,6 +316,15 @@ locals {
 }
 ```
 ### terraform.yaml
+The workflow handles:
+
+OIDC authentication
+Terraform initialization with backend config
+Formatting, validation, planning
+Auto-apply for changes on main
+
+This creates a fully automated GitOps-style deployment pipeline.
+
 ```yaml:terraform.tf
 name: 'Terraform Plan & Apply'
 
@@ -281,8 +347,8 @@ env:
     ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }} # Terraform uses variable implicit to authenticate
     ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }} # Terraform uses variable implicit to authenticate
     location: westeurope
-    RESOURCE_GROUP: <resource group name> # created via backend.yaml
-    STORAGE_ACCOUNT: <name of storage account where tfstate is stored> # Created via the backend.yaml
+    RESOURCE_GROUP: <resource group name> # same as backend.yaml
+    STORAGE_ACCOUNT: <name of storage account where tfstate is stored> # same as backend.yaml
 
 jobs:
   terraform:
@@ -329,9 +395,9 @@ jobs:
         - name: Terraform Apply
           run: terraform apply -auto-approve -input=false -var location=$location
 ```
+---
 
+## Sources used
 
-### Links used
-
-- [Terraform State Management: Understanding the Foundation of Infrastructure as Codet](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
-- [How to store Terraform state file in Azure Storage | How to manage Terraform state in Azure Blob Storage | Terraform Remote state in Azure Blob storage | Terraform backend](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)
+- [Terraform State Management: Understanding the Foundation of Infrastructure as Code](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
+- [How to store Terraform state file in Azure Storage](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)

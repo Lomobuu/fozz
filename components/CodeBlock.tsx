@@ -12,12 +12,10 @@ interface CodeBlockProps {
 export default function CodeBlock({ className, children }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
-  // Extract language and optional title from className
   let language = "text";
   let title: string | undefined = undefined;
 
   if (className) {
-    // className comes as e.g. "language-yaml:title=workflow.yml"
     const langMatch = className.match(/language-(\w+)/);
     if (langMatch) language = langMatch[1];
 
@@ -25,9 +23,12 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
     if (titleMatch) title = titleMatch[1];
   }
 
+  const cleanCode =
+    children.endsWith("\n") ? children.slice(0, -1) : children;
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(children);
+      await navigator.clipboard.writeText(cleanCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -37,7 +38,6 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
 
   return (
     <div className="my-4 rounded-lg overflow-hidden shadow-md relative">
-      {/* Optional title bar */}
       {title && (
         <div className="flex justify-between items-center bg-gray-900 text-white px-4 py-1 text-sm font-medium border-b border-gray-700">
           <span>{title}</span>
@@ -55,12 +55,14 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
         style={oneDark}
         wrapLines
         showLineNumbers
-        customStyle={{ margin: 0, borderRadius: title ? "0 0 0.5rem 0.5rem" : "0.5rem" }}
+        customStyle={{
+          margin: 0,
+          borderRadius: title ? "0 0 0.5rem 0.5rem" : "0.5rem",
+        }}
       >
-        {children}
+        {cleanCode}
       </SyntaxHighlighter>
 
-      {/* Floating copy button if no title */}
       {!title && (
         <button
           onClick={handleCopy}
