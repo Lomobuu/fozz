@@ -210,15 +210,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Upload to Azure Blob Storage
-        uses: azure/CLI@v1 # Use the Azure CLI action
-        with:
-          inlineScript: |
-            # Clear existing files in the $web container
-            az storage blob delete-batch --account-name $STORAGE_ACCOUNT --source '$web' --pattern "*"
-
-            # Upload the new build files
-            az storage blob upload-batch --account-name $STORAGE_ACCOUNT --source build --destination '$web'
+        - name: Upload to Azure Blob Storage
+          uses: azure/CLI@v1
+          with:
+            inlineScript: |
+              az storage blob delete-batch --account-name $STORAGE_ACCOUNT --source '$web' --pattern "*"
+              az storage blob upload-batch --account-name $STORAGE_ACCOUNT --source out --destination '$web'
 ```
 
 ## Deploy static website with VSCODE
@@ -247,7 +244,7 @@ pnpm build
 
 Deploy your application to the website in one of 2 ways:
 
-Via .next folder
+Via /out folder (azure storage account static website with nextjs only supports next export in /out. It does NOT support .next/build)
 
 <BlogImage 
   src="/deploy.png" 
