@@ -271,21 +271,20 @@ After the deployment workflow has run successfully:
 
 # Azure CDN
 
-## Create Azure CDN (Terraform)
+## Create Azure Front Door (Terraform)
 
-### cdn.tf
+### frontdoor.tf
 
-```hcl:cdn.tf
-resource "azurerm_cdn_profile" "cdn" {
-  name                = local.cdn_name
-  location            = azurerm_resource_group.rg.location
+```hcl:frontdoor.tf
+resource "azurerm_cdn_frontdoor_profile" "frontDoor" {
+  name                = local.frontdoor_name
   resource_group_name = azurerm_resource_group.rg.name
-  sku                 = "Standard_Microsoft"
+  sku_name            = "Standard_AzureFrontDoor"
 }
 ```
 
 # Configure Godaddy domain to static storage
-To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy & Azure CDN
+To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy & Azure Front Door
 
 ## Godaddy Configuration
 
@@ -322,4 +321,3 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
 
 - [Host a static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blob-static-website-how-to?tabs=azure-portal)
 - [Use GitHub Actions workflow to deploy your static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blobs-static-site-github-actions?tabs=openid)
-- [Map a custom domain to an Azure Blob Storage endpoint](https://learn.microsoft.com/nb-no/azure/storage/blobs/storage-custom-domain-name?tabs=azure-portal)

@@ -11,6 +11,6 @@ locals {
     # Resource Group Name (may contain dashes)
   strg_name = "${local.base}strg${local.env}"
 
-  cdn_name = "${local.base}cdn${local.env}"
+  frontdoor_name = "${local.base}-frontdoor-${local.env}"
 
 }
