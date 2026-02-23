@@ -269,8 +269,23 @@ After the deployment workflow has run successfully:
   size="Large" 
 />
 
+# Azure CDN
+
+## Create Azure CDN (Terraform)
+
+### cdn.tf
+
+```hcl:cdn.tf
+resource "azurerm_cdn_profile" "cdn" {
+  name                = local.cdn_name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "Standard_Microsoft"
+}
+```
+
 # Configure Godaddy domain to static storage
-To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy & network custom domain in Azure.
+To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME on Godaddy & Azure CDN
 
 ## Godaddy Configuration
 
@@ -307,3 +322,4 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
 
 - [Host a static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blob-static-website-how-to?tabs=azure-portal)
 - [Use GitHub Actions workflow to deploy your static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blobs-static-site-github-actions?tabs=openid)
+- [Map a custom domain to an Azure Blob Storage endpoint](https://learn.microsoft.com/nb-no/azure/storage/blobs/storage-custom-domain-name?tabs=azure-portal)
