@@ -291,11 +291,6 @@ resource "azurerm_resource_group" "rg" {
 ```
 ### variables.tf
 ```hcl:variables.tf
-variable "env" {
-  type = string
-  default = "test"
-}
-
 variable "location" {
   type        = string
   default = "westeurope"
@@ -304,14 +299,11 @@ variable "location" {
 ### locals.tf
 ```hcl:locals.tf
 locals {
-  # Make sure the name is lower case
-  env = lower(var.env)
-
   # Your base project name
   base = "simpletst"
 
   # Resource Group Name (may contain dashes)
-  rg_name = "${local.base}-RG-${local.env}"
+  rg_name = "${local.base}-RG"
 
 }
 ```
