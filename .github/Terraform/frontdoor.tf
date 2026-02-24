@@ -29,23 +29,25 @@ resource "azurerm_cdn_frontdoor_origin_group" "origin_group" {
 }
 
 locals {
-  static_site_hostname = replace(
-    azurerm_storage_account.storageAccount.primary_web_endpoint,
-    "https://",
-    ""
+  static_site_hostname = trimsuffix(
+    replace(azurerm_storage_account.storageAccount.primary_web_endpoint, "https://", ""),
+    "/"
   )
 }
+
 
 resource "azurerm_cdn_frontdoor_origin" "origin" {
   name                          = "${local.frontdoor_name}-origin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_group.id
 
-  host_name          = local.static_site_hostname
-  origin_host_header = local.static_site_hostname
+  host_name                    = local.static_site_hostname
+  origin_host_header           = local.static_site_hostname
   certificate_name_check_enabled = true
+
   http_port  = 80
   https_port = 443
 }
+
 
 resource "azurerm_cdn_frontdoor_route" "route" {
   name                          = "${local.frontdoor_name}-route"
