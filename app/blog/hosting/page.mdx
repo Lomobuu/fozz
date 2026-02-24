@@ -1,122 +1,90 @@
 export const meta = {
-  title: "How to host & setup domain with Godaddy in azure static storage with Azure Front Door",
+  title: "Host a Static Website Using Azure Storage and Azure Front Door",
   date: "2026-02-19",
-  excerpt: "How to host & setup domain with Godaddy in azure static storage with Azure Front Door",
+  excerpt: "Step-by-step guide to hosting a static website in Azure Storage and configuring a custom domain via GoDaddy using Azure Front Door.",
 }
 
-# How to host & setup domain with Godaddy in azure static storage with Azure Front Door
-<br/>
-A easy and cheap way to host a simple static website is to use an azure storage account.
+# Host a Static Website Using Azure Storage and Azure Front Door
+
+Hosting a static website in Azure can be both cost‑efficient and highly scalable.  
+This guide walks through deploying a static site to an Azure Storage Account, automating deployment with GitHub Actions, and configuring a custom domain through Azure Front Door and GoDaddy.
+
+---
 
 ## Prerequisites
-- Azure Subscription
-- GitHub repo with code
-- Service Principal
-- Azure Storage Account WITH static website enabled
 
-### Service Principal
-A Service Principal acts as an identity for GitHub Actions. Instead of storing client secrets, we will use OIDC authentication, which avoids managing credentials manually.
+- Azure Subscription  
+- GitHub repository containing your static site (React/Next.js/etc.)  
+- Azure Service Principal (via OIDC)  
+- Azure Storage Account with **Static Website** enabled  
 
-<BlogImage 
-  src="/serviceacc.png" 
-  alt="Create service account"
-  size="medium" 
-/>
+---
 
-### Set up Role Assignment
-Assign your Service Principal the minimum access needed — typically Contributor on the resource group responsible for storing the Terraform state.
-This allows Terraform to create or modify the storage account, container, and supporting resources
+## Service Principal (OIDC Authentication)
 
-<BlogImage 
-  src="/roleassignment1.png" 
-  alt="Create role assignment"
-  size="medium" 
-/>
+A Service Principal acts as the identity GitHub Actions uses to deploy resources.  
+Instead of storing long‑lived secrets, we use **OIDC authentication**, which allows GitHub to request short‑lived Azure tokens securely.
 
-<BlogImage 
-  src="/contributor.png" 
-  alt="Contributor access"
-  size="medium" 
-/>
+<BlogImage src="/serviceacc.png" alt="Create service account" size="medium" />
 
-### Set up Authentication via federated Credentials
+---
 
-Federated Credentials let GitHub OIDC tokens authenticate to Azure without storing secrets.
-Each credential maps to a specific GitHub repository and workflow, making access more secure and controlled.
+## Assign Required Roles
 
+Grant the Service Principal the minimum permissions needed.  
+For Terraform deployments, **Contributor** access on the resource group is typically enough.
 
-<BlogImage 
-  src="/fedcred1.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
+This allows Terraform to create or update:
 
-<BlogImage 
-  src="/fedcred.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
+- Storage accounts  
+- Containers  
+- Supporting infrastructure  
 
-<BlogImage 
-  src="/fedcred2.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
+<BlogImage src="/roleassignment1.png" alt="Create role assignment" size="medium" />
+<BlogImage src="/contributor.png" alt="Contributor access" size="medium" />
 
-<BlogImage 
-  src="/fedcred3.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
+---
 
-### Configure Secrets in GitHub Actions
+## Configure Federated Credentials
 
-Once the Service Principal is created, you need to store IDs so GitHub can authenticate via OIDC:
+Federated Credentials allow GitHub OIDC tokens to authenticate without secrets.  
+Each credential links to a specific GitHub repository and workflow, ensuring secure and scoped access.
 
-- Client ID - identifies your Service Principal
-- Tenant ID - identifies your Azure AD tenant
-- Subscription ID - identifies which subscription to operate in
+<BlogImage src="/fedcred1.png" alt="Federated Credentials" size="medium" />
+<BlogImage src="/fedcred.png" alt="Federated Credentials" size="medium" />
+<BlogImage src="/fedcred2.png" alt="Federated Credentials" size="medium" />
+<BlogImage src="/fedcred3.png" alt="Federated Credentials" size="medium" />
 
-These values are stored in GitHub Actions secrets, not as passwords, but simply as identifiers.
+---
 
-<BlogImage 
-  src="/tenantobjid.png" 
-  alt="Tenant and Client ID"
-  size="medium" 
-/>
+## Add Azure IDs to GitHub Secrets
 
-<BlogImage 
-  src="/subid.png" 
-  alt="subscription ID"
-  size="medium" 
-/>
+GitHub Actions requires three identifiers:
 
-Save them as:
-- AZURE_CLIENT_ID
-- AZURE_TENANT_ID
-- AZURE_SUBSCRIPTION_ID
+- **AZURE_CLIENT_ID** – Service Principal ID  
+- **AZURE_TENANT_ID** – Azure AD tenant  
+- **AZURE_SUBSCRIPTION_ID** – Subscription to deploy into  
 
+These are identifiers only — not sensitive secrets.
 
+<BlogImage src="/tenantobjid.png" alt="Tenant and Client ID" size="medium" />
+<BlogImage src="/subid.png" alt="Subscription ID" size="medium" />
 
-<BlogImage 
-  src="/secret1.png" 
-  alt="GHA secret"
-  size="medium" 
-/>
+<BlogImage src="/secret1.png" alt="GitHub secret" size="medium" />
+<BlogImage src="/secret2.png" alt="GitHub secret" size="medium" />
 
-<BlogImage 
-  src="/secret2.png" 
-  alt="GHA secret"
-  size="medium" 
-/>
+---
 
-## Create static website in Azure Storage (Terraform)
-Defer to [Simple Terraform state storage in Azure](/blog/tfstate)
+# Create Static Website in Azure Storage (Terraform)
 
-add a new resource to the environment:
+Refer to:  
+**[Simple Terraform state storage in Azure](/blog/tfstate)**
 
-### strg.tf
-```hcl:strg.tf
+Add the following resource definitions:
+
+### `strg.tf`
+
+```hcl
 resource "azurerm_storage_account" "storageAccount" {
   name                     = local.strg_name
   resource_group_name      = azurerm_resource_group.rg.name
@@ -133,10 +101,10 @@ resource "azurerm_storage_account_static_website" "website" {
 ```
 
 ## Create static website in Azure Storage (Manual)
-If you prefer not to automate the infrastructure, you can create everything via the Azure Portal.
+If you prefer the Azure Portal:
 <br/>
 
-###  Create a Resource Group In Azure
+### 1. Create a Resource Group
 
 <BlogImage 
   src="/rg.png" 
@@ -144,7 +112,7 @@ If you prefer not to automate the infrastructure, you can create everything via 
   size="medium" 
 />
 
-###  Create a Storage Account
+###  2. Create a Storage Account
 
 <BlogImage 
   src="/strg.png" 
@@ -158,7 +126,7 @@ If you prefer not to automate the infrastructure, you can create everything via 
   size="medium" 
 />
 
-### Enable Static Storage
+### 3. Enable Static Website
 
 <BlogImage 
   src="/statstrg.png" 
@@ -168,7 +136,7 @@ If you prefer not to automate the infrastructure, you can create everything via 
 
 
 ## Deploy static website with GitHub actions workflow
-Build & Deploy the react app with GitHub actions workflow
+This workflow builds your React app and uploads the output to the $web container.
 
 ```yaml:deploy.yaml
 name: Deploy React App to Azure Storage
@@ -218,9 +186,9 @@ jobs:
               az storage blob upload-batch --account-name $STORAGE_ACCOUNT --source out --destination '$web'
 ```
 
-## Deploy static website with VSCODE
+## Deploy Static Website Using VSCode
 
-Install the Azure Extension in VSCODE
+Install the Azure Tools extension
 
 <BlogImage 
   src="/Azure tools.png" 
@@ -228,7 +196,7 @@ Install the Azure Extension in VSCODE
   size="small" 
 />
 
-Log via your azure user
+Log in with your Azure account
 
 <BlogImage 
   src="/azurelogin.png" 
@@ -236,15 +204,15 @@ Log via your azure user
   size="small" 
 />
 
-build your application
+Build your application
 
 ```
 pnpm build
 ```
 
-Deploy your application to the website in one of 2 ways:
+Deploy using
 
-Via /out folder (azure storage account static website with nextjs only supports next export in /out. It does NOT support .next/build)
+## Option 1 — Upload /out folder
 
 <BlogImage 
   src="/deploy.png" 
@@ -252,7 +220,7 @@ Via /out folder (azure storage account static website with nextjs only supports 
   size="small" 
 />
 
-Via Azure extension plugin
+## Option 2 — Deploy via Azure Extension
 
 <BlogImage 
   src="/build.png" 
@@ -269,13 +237,13 @@ After the deployment workflow has run successfully:
   size="Large" 
 />
 
-# Azure CDN
+# Azure Front Door
 
 ## Create Azure Front Door (Terraform)
 
 Defer to [Simple Terraform state storage in Azure](/blog/tfstate)
 
-add a new resource to the environment:
+Add the following resource
 
 ### frontdoor.tf
 
@@ -288,7 +256,6 @@ resource "azurerm_cdn_frontdoor_profile" "frontDoor" {
 ```
 
 ## Create Azure Front Door Azure (Manual)
-If you prefer not to automate the infrastructure, you can create everything via the Azure Portal.
 <br/>
 
 <BlogImage 
@@ -343,10 +310,7 @@ If you prefer not to automate the infrastructure, you can create everything via 
   size="Large" 
 />
 
-
 ## Result
-
-Note the URL
 
 <BlogImage 
   src="/frontdoor10.png" 
@@ -355,11 +319,16 @@ Note the URL
 />
 
 
-# Configure Godaddy domain to static storage
+# Configure GoDaddy Domain for Azure Front Door
 To configure DNS between a domain host such as Godaddy and Azure static website we must configure CNAME & TXT on Godaddy with Azure Front Door endpoint
 
 
 ## Godaddy Configuration
+
+To connect your GoDaddy domain to Azure Front Door, configure:
+
+- CNAME → Front Door endpoint
+- TXT → Domain validation
 
 <BlogImage 
   src="/godaddy.png" 
@@ -392,7 +361,7 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
 />
 
 
-### Configuring Forwarding
+### Optional: Domain Forwarding
 
 <BlogImage 
   src="/forward.png" 
@@ -400,7 +369,7 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
   size="medium" 
 />
 
-# Result
+# Final Result
 
 <BlogImage 
   src="/finalresult.png" 
@@ -413,3 +382,4 @@ To configure DNS between a domain host such as Godaddy and Azure static website 
 
 - [Host a static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blob-static-website-how-to?tabs=azure-portal)
 - [Use GitHub Actions workflow to deploy your static website in Azure Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blobs-static-site-github-actions?tabs=openid)
+- [Host Static Website through Storage Account and Azure Front Door using Terraform.](https://shiftasia.com/community/host-static-website-through-storage-account-and-azure-front-door-using-terraform/)
