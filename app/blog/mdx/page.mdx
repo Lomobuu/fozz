@@ -14,9 +14,14 @@ This is how I built this website — a fully MDX‑powered blog running on the N
 
 # The Stack
 
-- **Next.js** (App Router)
-- **Tailwind CSS**
-- **MDX**
+<TechStack
+  items={[
+    { name: "Next.js", icon: "/nextjs.svg" },
+    { name: "Tailwind CSS", icon: "/tailwind.svg" },
+    { name: "MDX", icon: "/mdx.svg" },
+    { name: "React", icon: "/react.svg" },
+  ]}
+/>
 
 ---
 
@@ -84,7 +89,7 @@ MDX files act like pages — no extra configuration needed once MDX is set up.
 Contains shared UI components such as a navigation bar.
 ### Other files
 
-- tailwind.config.t|s - Tailwind CSS configuration
+- tailwind.config.ts - Tailwind CSS configuration
 - next.config.ts - Next.js configuration including MDX setup
 - package.json - dependencies and scripts
 - mdx.d.ts - MDX TypeScript support
