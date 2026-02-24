@@ -1,395 +1,225 @@
 export const meta = {
-  title: "Simple Terraform state storage in Azure",
-  date: "2026-02-18",
-  excerpt: "Storage of terraform.tfstate inside Azure Storage Account to store state configuration",
-}
+  title: "Deploying Terraform to Azure using GitHub Actions (OIDC)",
+  date: "2026-02-19",
+  excerpt: "Run Terraform init, plan and apply in GitHub Actions using Azure OIDC authentication",
+};
 
-# Simple Terraform state storage in Azure
+# Deploying Terraform to Azure using GitHub Actions (OIDC)
 
 <BlogImage 
   src="/terraformazure.png" 
-  alt="Terraform & Azure"
+  alt="Terraform & GitHub Actions"
   size="large" 
 />
 
 ---
 
-<br/>
-Terraform state is a file that records the infrastructure resources Terraform manages and maps them to your real cloud environment.
-Storing the state locally can easily lead to conflicts, especially when multiple developers or automation pipelines interact with the same infrastructure. Local files also introduce risks such as accidental deletion, overwriting, or inconsistent versions.
-<br/>
-By storing state remotely in Azure — typically inside an Azure Storage Account — you enable centralized, secure, and versioned state management. Remote state also adds capabilities such as state locking, preventing two operations from making changes simultaneously.
-<br/>
-This setup becomes even more important when using CI/CD pipelines like GitHub Actions, where automated workflows must securely retrieve and update the shared Terraform state.
-<br/>
+## What This Guide Covers
+
+This article assumes that Backend storage exists for storing state
+
+<Prerequisites
+  articles={[
+    {
+      title: "Manual Terraform Backend Setup in Azure",
+      href: "/blog/backendportal",
+      description: "Create the Azure Storage Account manually via the Azure Portal."
+    },
+    {
+      title: "Terraform Backend Bootstrap using Azure OIDC",
+      href: "/blog/backendtf",
+      description: "Provision the backend using GitHub Actions and federated identity."
+    }
+  ]}
+/>
+
+It also assumes:
+
+- OIDC authentication between GitHub and Azure is configured
+- Required repository secrets are stored
+
+If not, complete the backend and identity setup first.
+
+This guide focuses purely on:
+
+→ Running Terraform from GitHub Actions  
+→ Using OIDC authentication  
+→ Connecting to a remote Azure backend  
 
 ---
 
-## Simple Terraform Dataflow
+# Deployment Architecture
 
-In its simplest form, Terraform runs locally, performs authentication, deploys resources, and updates the state afterwards.
-<BlogImage 
-  src="/state.jpg" 
-  alt="Terraform state diagram"
-  size="medium" 
-/>
+GitHub Actions  
+→ OIDC Authentication  
+→ Azure  
+→ Remote Backend (Storage Account)  
+→ Infrastructure Deployment  
 
-## Local To Azure Terraform Dataflow
-
-When stored locally, this workflow works fine for personal projects but quickly becomes unmanageable for team‑based development.
-
-<BlogImage 
-  src="/state2.jpg" 
-  alt="Terraform state diagram 2"
-  size="medium" 
-/>
-
-## Goal Dataflow: GitHub to Azure Dataflow
-The ideal scenario is a fully automated pipeline:
-<br/>
-GitHub Actions runs Terraform → authenticates via Federated Identity → reads/writes state in Azure → applies changes.
-<br/>
-This removes local machine dependencies entirely. Infrastructure becomes reproducible and consistent, and deployments are performed in a controlled CI/CD environment.
-<br/>
-Moving the local storage to Azure introduces a remote backend, giving you:
-- **Shared access for teams** | Everyone reads and writes from the same state file.
-- **Locking** | Azure Storage provides blob leases, preventing parallel updates.
-- **Versioning** | Storage Accounts automatically keep previous state versions if enabled.
-
-<BlogImage 
-  src="/state3.jpg" 
-  alt="Terraform state diagram 3"
-  size="medium" 
-/>
-
-## Remote State
-
-
-<BlogImage 
-  src="/azurestorage.png" 
-  alt="Azure storage account for Terraform state"
-  size="small" 
-/>
+No local execution required.  
+No stored credentials.
 
 ---
 
-# Automatic setup with Service principal & workflow
-A Service Principal acts as an identity for GitHub Actions. Instead of storing client secrets, we will use OIDC authentication, which avoids managing credentials manually.
-## Initial Setup (Service Principal + workflow)
+# Minimal Terraform Configuration
 
-### [Create a Service Principal in Azure](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal)
+Below is a simple Terraform setup using the AzureRM provider and OIDC authentication.
 
-<BlogImage 
-  src="/serviceacc.png" 
-  alt="Create service account"
-  size="medium" 
-/>
+## main.tf
 
-
-### Set up Role Assignment
-Assign your Service Principal the minimum access needed — typically Contributor on the resource group responsible for storing the Terraform state.
-This allows Terraform to create or modify the storage account, container, and supporting resources
-
-<BlogImage 
-  src="/roleassignment1.png" 
-  alt="Create role assignment"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/contributor.png" 
-  alt="Contributor access"
-  size="medium" 
-/>
-
-### Set up Authentication via federated Credentials
-
-Federated Credentials let GitHub OIDC tokens authenticate to Azure without storing secrets.
-Each credential maps to a specific GitHub repository and workflow, making access more secure and controlled.
-
-
-<BlogImage 
-  src="/fedcred1.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/fedcred.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/fedcred2.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/fedcred3.png" 
-  alt="Federated Credentials"
-  size="medium" 
-/>
-
-
- 
-### Configure Secrets in GitHub Actions
-
-Once the Service Principal is created, you need to store IDs so GitHub can authenticate via OIDC:
-
-- Client ID - identifies your Service Principal
-- Tenant ID - identifies your Azure AD tenant
-- Subscription ID - identifies which subscription to operate in
-
-These values are stored in GitHub Actions secrets, not as passwords, but simply as identifiers.
-
-<BlogImage 
-  src="/tenantobjid.png" 
-  alt="Tenant and Client ID"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/subid.png" 
-  alt="subscription ID"
-  size="medium" 
-/>
-
-Save them as:
-- AZURE_CLIENT_ID
-- AZURE_TENANT_ID
-- AZURE_SUBSCRIPTION_ID
-
-
-
-<BlogImage 
-  src="/secret1.png" 
-  alt="GHA secret"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/secret2.png" 
-  alt="GHA secret"
-  size="medium" 
-/>
-
-
-
-### Create Storage Account & Container via GitHub Actions workflow
-
-This workflow automates the creation of the backend resources.
-Running this once ensures that all required Terraform backend components are consistently deployed.
-You only need to adjust:
-
-- Resource group name
-- Storage account name
-
-The rest is handled automatically through Azure CLI commands.
-
-```yaml:title=backend.yaml
-on: workflow_dispatch # Manual start trigger
-
-name: BackendStorageCreate
-
-permissions:
-  id-token: write # Require write permission to Fetch an OIDC token.
-
-env:
-  location: "westeurope"
-  terraformStorageRG: <name of resource group>
-  terraformStorageAccount: <name of storage account> # no dashes allowed
-  containerNameBackend: 'tfstate' # Name of container
-  backendAzureRmKey: 'terraform.tfstate'
-
-jobs:
-
-  setup-terraform-backend:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-    - name: Azure CLI script
-      uses: azure/cli@v2
-      with:
-        azcliversion: latest
-        inlineScript: |
-          az group create --location $location --name $terraformStorageRG
-          
-          az storage account create --name $terraformStorageAccount --resource-group $terraformStorageRG --location $location --sku Standard_LRS
-          
-          az storage container create --name $containerNameBackend --account-name $terraformStorageAccount
-```
-## Manual setup in Azure Portal
-
-If you prefer not to automate the initial backend setup, you can create everything directly via the Azure Portal.
-<br/>
-
-###  Create a Resource Group In Azure
-
-<BlogImage 
-  src="/rg.png" 
-  alt="Resource Group"
-  size="medium" 
-/>
-
-###  Create a Storage Account
-
-<BlogImage 
-  src="/strg.png" 
-  alt="Create Storage Account"
-  size="medium" 
-/>
-
-<BlogImage 
-  src="/strg2.png" 
-  alt="Create Storage Account"
-  size="medium" 
-/>
-
-
-###  Create a Container
-
-<BlogImage 
-  src="/strg3.png" 
-  alt="Create storage account container"
-  size="medium" 
-/>
-
-## Run Terraform with GitHub Actions
-
-This section configures Terraform so that GitHub Actions performs all deployment steps: init, validate, plan, and apply.
-By referencing the resource group and storage account created earlier, Terraform can connect to the remote backend automatically.
-
-### main.tf
-```hcl:main.tf
+```hcl:title=main.tf
 terraform {
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
+      source  = "hashicorp/azurerm"
       version = "~> 4.61.0"
     }
   }
 }
 
 provider "azurerm" {
-   features {}
-   use_oidc = true
+  features {}
+  use_oidc = true
 }
 
-# Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = local.rg_name
   location = var.location
 }
 ```
-### variables.tf
-```hcl:variables.tf
+## variables.tf
+```hcl:title=variables.tf
 variable "location" {
-  type        = string
+  type    = string
   default = "westeurope"
 }
 ```
-### locals.tf
-```hcl:locals.tf
+
+## locals.tf
+```hcl:title=locals.tf
 locals {
-  # Your base project name
-  base = "simpletst"
-
-  # Resource Group Name (may contain dashes)
-  rg_name = "${local.base}-RG"
-
+  base    = "simpletst"
+  rg_name = "${local.base}-rg"
 }
 ```
-### terraform.yaml
-The workflow handles:
 
-OIDC authentication
-Terraform initialization with backend config
-Formatting, validation, planning
-Auto-apply for changes on main
+This keeps the infrastructure example intentionally simple.
 
-This creates a fully automated GitOps-style deployment pipeline.
+# GitHub Actions Workflow
 
-```yaml:terraform.yaml
-name: 'Terraform Plan & Apply'
+This workflow:
+- Authenticates using OIDC
+- Initializes Terraform with remote backend
+- Validates and formats code
+- Runs plan
+- Applies automatically on main
+
+## terraform.yaml
+```yaml:title=terraform.yaml
+name: Terraform Plan & Apply
 
 on:
   push:
-    branches: # Trigger on main branch
-      - main 
-    paths: # Only trigger if infrastructure is changed
-    - '.github/Terraform/**'
-    - '.github/workflows/terraform.yaml'
-  workflow_dispatch: # Optional manual trigger
-
+    branches:
+      - main
+    paths:
+      - ".github/Terraform/**"
+      - ".github/workflows/terraform.yaml"
+  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
 env:
-    ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }} # Terraform uses variable implicit to authenticate
-    ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }} # Terraform uses variable implicit to authenticate
-    ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }} # Terraform uses variable implicit to authenticate
-    location: westeurope
-    RESOURCE_GROUP: <resource group name> # same as backend.yaml
-    STORAGE_ACCOUNT: <name of storage account where tfstate is stored> # same as backend.yaml
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+  RESOURCE_GROUP: <backend-resource-group>
+  STORAGE_ACCOUNT: <backend-storage-account>
+  location: westeurope
 
 jobs:
   terraform:
-        name: Deploy to Azure
-        runs-on: ubuntu-latest
-        # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
-        defaults:
-          run:
-            working-directory: .github/Terraform
-            shell: bash
+    runs-on: ubuntu-latest
 
-        steps:
-        # Checkout the repository to the GitHub Actions runner
-        - name: Checkout
-          uses: actions/checkout@v3
+    defaults:
+      run:
+        working-directory: .github/Terraform
+        shell: bash
 
-        # Install the latest version of Terraform CLI 
-        - name: Setup Terraform
-          uses: hashicorp/setup-terraform@v1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-        # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
 
-        - name: Terraform Init
-          run: |
-            terraform init \
-              -backend-config="resource_group_name=$RESOURCE_GROUP" \
-              -backend-config="storage_account_name=$STORAGE_ACCOUNT" \
-              -backend-config="container_name=tfstate" \
-              -backend-config="key=terraform.tfstate" \
-              -backend-config="use_oidc=true"
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=$RESOURCE_GROUP" \
+            -backend-config="storage_account_name=$STORAGE_ACCOUNT" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="use_oidc=true"
 
+      - name: Terraform Format
+        run: terraform fmt -recursive
 
-        - name: Terraform Format
-          run: terraform fmt -recursive
+      - name: Terraform Validate
+        run: terraform validate
 
-        # Validate before Planning
-        - name: Terraform Validate
-          run: terraform validate 
+      - name: Terraform Plan
+        run: terraform plan -input=false -var location=$location
 
-
-        - name: Terraform Plan
-          run: terraform plan -input=false -var location=$location
-          
-        - name: Terraform Apply
-          run: terraform apply -auto-approve -input=false -var location=$location
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false -var location=$location
 ```
----
 
-## Sources used
+## How It Works
 
-- [Terraform State Management: Understanding the Foundation of Infrastructure as Code](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
-- [How to store Terraform state file in Azure Storage](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)
+1. GitHub requests an OIDC token
+2. Azure validates it via federated identity
+3. Terraform initializes using the remote backend
+4. Plan and apply execute inside the runner
+5. State is written to Azure Storage
+
+### This ensures:
+
+- No local state
+- No client secrets
+- Reproducible deployments
+- Fully automated infrastructure changes
+
+# Deployment Flow
+
+Push to main
+
+→ GitHub workflow triggers
+
+→ Terraform runs
+
+→ Azure resources update
+
+→ Remote state updated
+
+Infrastructure becomes Git-driven.
+
+
+# Result
+
+You now have:
+
+- Remote Terraform state
+- OIDC-based authentication
+- CI/CD infrastructure deployment
+- Zero local dependency
+
+This completes the GitOps-style workflow.
+
+# Sources used
+
+- [How to Use Terraform in GitHub Actions](https://www.env0.com/blog/terraform-github-actions)
+- [Deploy to Azure infrastructure with GitHub Actions](https://learn.microsoft.com/en-us/devops/deliver/iac-github-actions)

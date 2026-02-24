@@ -1,0 +1,238 @@
+export const meta = {
+  title: "Host a Static Website in Azure (Manual Portal Setup)",
+  date: "2026-02-19",
+  excerpt: "Step-by-step manual guide to hosting a static website in Azure Storage and exposing it securely using Azure Front Door with a custom domain.",
+}
+
+# Host a Static Website in Azure (Manual Portal Setup)
+
+This guide walks through hosting a static website entirely through the Azure Portal — no Terraform, no automation.
+
+You will:
+
+- Create a Storage Account  
+- Enable Static Website hosting  
+- Deploy your site files  
+- Configure Azure Front Door  
+- Connect a custom domain (GoDaddy example)
+
+---
+
+# Part 1 — Azure Storage Static Website
+
+## 1. Create a Resource Group
+
+Start by creating a new Resource Group.
+
+<BlogImage src="/rg.png" alt="Create Resource Group" size="medium" />
+
+Choose:
+- Subscription
+- Region
+- Logical name (e.g. rg-static-website)
+
+---
+
+## 2. Create a Storage Account
+
+Navigate to **Storage Accounts → Create**
+
+<BlogImage src="/strg.png" alt="Create Storage Account" size="medium" />
+<BlogImage src="/strg2.png" alt="Storage configuration" size="medium" />
+
+Recommended settings:
+
+- Performance: Standard
+- Redundancy: GRS (or LRS for dev/test)
+- Networking: Public endpoint enabled
+
+---
+
+## 3. Enable Static Website Hosting
+
+Inside the Storage Account:
+
+Data Management → Static Website → Enable
+
+<BlogImage src="/statstrg.png" alt="Enable static website" size="medium" />
+
+Configure:
+
+- Index document name → index.html
+- Error document → 404.html
+
+Azure automatically creates a special container called: $web
+
+
+This is where your static files must live.
+
+---
+
+# Part 2 — Deploy Your Static Site
+
+After building your site locally:
+
+```
+pnpm build
+```
+
+
+(or npm run build depending on your project)
+
+You now have a static output folder (commonly /out or /build).
+
+---
+
+## Option 1 — Upload via Azure Portal
+
+Go to:
+
+Storage Account → Containers → $web → Upload
+
+<BlogImage src="/deploy.png" alt="Upload to web container" size="small" />
+
+Upload the contents of your build folder.
+
+Once complete, open:
+
+Static Website → Primary Endpoint
+
+You should now see your site live.
+
+<BlogImage src="/result.png" alt="Static website result" size="large" />
+
+---
+
+# Part 3 — Add Azure Front Door (Global HTTPS + CDN)
+
+Azure Storage endpoints are public but not optimized for:
+
+- Global performance  
+- Automatic HTTPS certificates  
+- Custom domain routing  
+
+Azure Front Door solves this.
+
+---
+
+## 1. Create Azure Front Door
+
+Search for **Front Door and CDN profiles** → Create
+
+<BlogImage src="/frontdoor1.png" alt="Create Front Door" size="large" />
+<BlogImage src="/frontdoor2.png" alt="Front Door configuration" size="small" />
+
+Choose:
+
+- SKU: Standard Azure Front Door
+- Resource Group: same as storage
+
+
+---
+
+## 2. Configure Route
+
+Create a route linking:
+
+Frontend endpoint → Origin group
+
+<BlogImage src="/frontdoor8.png" alt="Domain validation" size="medium" />
+
+Enable:
+
+- HTTPS redirect
+- HTTP → HTTPS enforcement
+
+---
+
+## 3. Verify Default Endpoint
+
+After deployment, open the default Front Door domain.
+
+<BlogImage src="/frontdoor10.png" alt="Front Door result" size="large" />
+
+Your static site should now load globally via Front Door.
+
+---
+
+# Part 4 — Connect a Custom Domain (GoDaddy Example)
+
+To use your own domain:
+
+- Add a CNAME record
+- Validate ownership via TXT record
+
+---
+
+## 1. Add Custom Domain in Front Door
+
+Go to:
+
+Front Door → Domains
+<BlogImage src="/frontdoor3.png" alt="Add custom domain" size="large" />
+<BlogImage src="/frontdoor4.png" alt="Add custom domain" size="large" />
+<BlogImage src="/frontdoor9.png" alt="Add custom domain" size="large" />
+<BlogImage src="/frontdoor11.png" alt="Add custom domain" size="large" />
+
+
+
+Azure will provide:
+
+- CNAME target
+- TXT validation record
+<BlogImage src="/frontdoor13.png" alt="Add custom domain" size="large" />
+---
+
+## 2. Configure DNS in GoDaddy
+
+In GoDaddy DNS Management:
+
+Add:
+
+- CNAME → points to Front Door endpoint  
+- TXT → validation value provided by Azure  
+
+<BlogImage src="/godaddy.png" alt="GoDaddy DNS setup" size="medium" />
+<BlogImage src="/godaddy2.png" alt="GoDaddy TXT setup" size="medium" />
+<BlogImage src="/frontdoor12.png" alt="GoDaddy TXT setup" size="medium" />
+
+Wait for DNS propagation.
+
+---
+
+## 3. Enable HTTPS
+
+Once validated:
+
+- Enable managed certificate in Front Door
+- Associate domain with route
+
+<BlogImage src="/frontdoor11.png" alt="HTTPS enabled" size="large" />
+
+---
+
+# Final Result
+
+You now have:
+
+- Static site hosted in Azure Storage  
+- Global acceleration via Azure Front Door  
+- Automatic HTTPS  
+- Custom domain connected  
+
+<BlogImage src="/finalresult.png" alt="Final website result" size="large" />
+
+---
+
+# When Should You Use This Manual Approach?
+
+Use this when:
+
+- Learning Azure fundamentals
+- Deploying a quick personal site
+- Testing architecture before automation
+- Avoiding infrastructure-as-code complexity
+
+If you plan to manage multiple environments or production workloads, automation is strongly recommended.
+
+---

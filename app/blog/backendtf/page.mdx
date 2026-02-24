@@ -1,0 +1,259 @@
+export const meta = {
+  title: "Terraform Backend Bootstrap using Azure OIDC & GitHub Actions",
+  date: "2026-02-18",
+  excerpt: "Automating Azure Terraform backend creation using Service Principal, Federated Credentials, and GitHub Actions",
+};
+
+# Terraform Backend Bootstrap using Azure OIDC & GitHub Actions
+
+<BlogImage 
+  src="/terraformazure.png" 
+  alt="Terraform & Azure"
+  size="large" 
+/>
+
+---
+
+## What This Guide Covers
+
+This guide focuses only on the **automatic backend bootstrap process**.
+
+We will:
+
+1. Create a Service Principal in Azure  
+2. Configure Federated Credentials (OIDC)  
+3. Assign required roles  
+4. Store required IDs in GitHub  
+5. Use GitHub Actions to create the Terraform backend 
+
+---
+
+## Architecture Overview
+
+The goal is simple:
+
+GitHub Actions → OIDC authentication → Azure → Create Storage Account + Container
+
+No client secrets.  
+No stored credentials.  
+No manual backend provisioning.
+
+---
+
+# Phase 1 — Identity Setup in Azure
+
+## Step 1 — Create a Service Principal
+
+Create a Service Principal inside Azure.
+
+You can follow the official Microsoft guide:
+https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal
+
+<BlogImage 
+  src="/serviceacc.png" 
+  alt="Create Service Principal"
+  size="medium" 
+/>
+
+The Service Principal will act as the identity for GitHub Actions.
+
+---
+
+## Step 2 — Assign Required Role
+
+The Service Principal needs permission to create:
+
+- Resource Groups
+- Storage Accounts
+- Blob Containers
+
+Assign:
+
+**Contributor** role  
+Scope: The subscription or specific resource group
+
+<BlogImage 
+  src="/roleassignment1.png" 
+  alt="Create role assignment"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/contributor.png" 
+  alt="Contributor role"
+  size="medium" 
+/>
+
+Keep permissions scoped as narrowly as possible.
+
+---
+
+# Phase 2 — Configure Federated Credentials (OIDC)
+
+Instead of using client secrets, we use **OIDC federation**.
+
+This allows GitHub to authenticate securely without storing credentials.
+
+## Step 3 — Add Federated Credential
+
+Inside your Service Principal:
+
+- Navigate to **Certificates & Secrets**
+- Select **Federated Credentials**
+- Add new credential
+
+Choose:
+- Scenario: GitHub Actions
+- Organization
+- Repository
+- Branch (usually main)
+
+<BlogImage 
+  src="/fedcred1.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred.png" 
+  alt="Federated Credentials setup step 2"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred2.png" 
+  alt="Federated Credentials setup step 3"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/fedcred3.png" 
+  alt="Federated Credentials setup complete"
+  size="medium" 
+/>
+
+This configuration allows GitHub to request an identity token that Azure trusts.
+
+No secrets required.
+
+---
+
+# Phase 3 — Configure GitHub Repository Secrets
+
+Although we are not storing passwords, GitHub still needs:
+
+- Client ID  
+- Tenant ID  
+- Subscription ID  
+
+These identify **where** authentication should happen.
+
+Locate them in Azure:
+
+<BlogImage 
+  src="/tenantobjid.png" 
+  alt="Tenant and Client ID"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/subid.png" 
+  alt="Subscription ID"
+  size="medium" 
+/>
+
+---
+
+## Add Them to GitHub
+
+In your repository:
+
+Settings → Secrets and variables → Actions → New repository secret
+
+Add:
+
+- AZURE_CLIENT_ID
+- AZURE_TENANT_ID
+- AZURE_SUBSCRIPTION_ID
+
+<BlogImage 
+  src="/secret1.png" 
+  alt="GitHub secret setup step 1"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/secret2.png" 
+  alt="GitHub secret setup step 2"
+  size="medium" 
+/>
+
+These are identifiers — not passwords.
+
+---
+
+# Phase 4 — GitHub Workflow to Create Terraform Backend
+
+This workflow creates:
+
+- Resource Group  
+- Storage Account  
+- Blob Container  
+
+It runs once to bootstrap the Terraform backend.
+
+---
+
+## backend.yaml
+
+```yaml:title=.github/workflows/backend.yaml
+name: BackendStorageCreate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  location: "westeurope"
+  terraformStorageRG: <resource-group-name>
+  terraformStorageAccount: <storage-account-name>
+  containerNameBackend: "tfstate"
+
+jobs:
+  setup-terraform-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create Backend Resources
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az group create \
+              --name $terraformStorageRG \
+              --location $location
+
+            az storage account create \
+              --name $terraformStorageAccount \
+              --resource-group $terraformStorageRG \
+              --location $location \
+              --sku Standard_LRS
+
+            az storage container create \
+              --name $containerNameBackend \
+              --account-name $terraformStorageAccount
+```
+
+# Sources Used
+- [Terraform State Management: Understanding the Foundation of Infrastructure as Code](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
+- [How to store Terraform state file in Azure Storage](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)

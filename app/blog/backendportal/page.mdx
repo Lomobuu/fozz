@@ -1,0 +1,158 @@
+export const meta = {
+  title: "Manual Terraform Backend Setup in Azure",
+  date: "2026-02-17",
+  excerpt: "Create an Azure Storage Account manually to store Terraform remote state",
+};
+
+# Manual Terraform Backend Setup in Azure
+
+<BlogImage 
+  src="/azurestorage.png" 
+  alt="Azure Storage Account for Terraform state"
+  size="small" 
+/>
+
+---
+
+## What This Guide Covers
+
+This guide shows how to manually create the required Azure resources to store Terraform remote state.
+
+We will create:
+
+1. A Resource Group  
+2. A Storage Account  
+3. A Blob Container (tfstate)  
+
+This is useful when:
+
+- You want a quick local setup
+- You are testing Terraform manually
+- You are not yet using CI/CD automation
+- You prefer understanding the resources before automating them
+
+This guide does **not** cover GitHub Actions or OIDC authentication.
+
+---
+
+## Why Remote State?
+
+Terraform state tracks all managed infrastructure.
+
+Storing it locally:
+
+- Prevents team collaboration  
+- Risks accidental deletion  
+- Causes state conflicts  
+
+Using Azure Storage:
+
+- Centralizes state  
+- Enables state locking  
+- Supports versioning  
+- Improves reliability  
+
+---
+
+# Step 1 — Create a Resource Group
+
+In the Azure Portal:
+
+1. Navigate to **Resource Groups**
+2. Select **Create**
+3. Choose:
+   - Subscription
+   - Region
+   - Name (example: terraform-backend-rg)
+
+<BlogImage 
+  src="/rg.png" 
+  alt="Create Azure Resource Group"
+  size="medium" 
+/>
+
+Click **Review + Create**, then **Create**.
+
+---
+
+# Step 2 — Create a Storage Account
+
+Navigate to:
+
+Storage Accounts → Create
+
+Choose:
+
+- Same Subscription  
+- Resource Group created above  
+- Unique Storage Account name  
+- Region (same as resource group recommended)  
+- Performance: Standard  
+- Redundancy: LRS (sufficient for most cases)
+
+<BlogImage 
+  src="/strg.png" 
+  alt="Create Azure Storage Account"
+  size="medium" 
+/>
+
+Review and create.
+
+---
+
+## Storage Account Settings Recommendation
+
+After creation:
+
+- Enable **Blob versioning** (recommended)
+- Keep public access disabled
+- Use private networking unless required otherwise
+
+<BlogImage 
+  src="/strg2.png" 
+  alt="Storage Account configuration"
+  size="medium" 
+/>
+
+Blob versioning helps recover from accidental state corruption.
+
+---
+
+# Step 3 — Create the Backend Container
+
+Inside your Storage Account:
+
+1. Navigate to **Containers**
+2. Click **+ Container**
+3. Name it:
+4. Access level: **Private**
+
+<BlogImage 
+  src="/strg3.png" 
+  alt="Create Terraform state container"
+  size="medium" 
+/>
+
+This container will store the terraform.tfstate
+
+---
+
+# Terraform Backend Configuration
+
+Once the resources are created, configure Terraform to use them.
+
+Add this block to your main.tf:
+
+```hcl:title=main.tf
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "terraform-backend-rg"
+    storage_account_name = "<yourstorageaccount>"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+  }
+}
+```
+
+# Sources Used
+- [Store Terraform state in Azure Storage](https://learn.microsoft.com/en-us/azure/developer/terraform/store-state-in-azure-storage?tabs=azure-cli)

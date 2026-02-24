@@ -6,6 +6,8 @@ import * as mdx from "./mdx/page.mdx"
 import * as hosting from "./hosting/page.mdx"
 import * as tfstate from "./tfstate/page.mdx"
 import * as container from "./container/page.mdx"
+import * as backendportal from "./backendportal/page.mdx"
+import * as backendtf from "./backendtf/page.mdx"
 
 type Post = {
   slug: string
@@ -45,6 +47,18 @@ const posts: Post[] = [
     title: tfstate.meta.title,
     date: new Date(tfstate.meta.date),
     excerpt: tfstate.meta.excerpt,
+  },
+      {
+    slug: "backendportal",
+    title: backendportal.meta.title,
+    date: new Date(backendportal.meta.date),
+    excerpt: backendportal.meta.excerpt,
+  },
+      {
+    slug: "backendtf",
+    title: backendtf.meta.title,
+    date: new Date(backendtf.meta.date),
+    excerpt: backendtf.meta.excerpt,
   }
 ].sort((a, b) => b.date.getTime() - a.date.getTime()) // newest first
 
