@@ -67,7 +67,9 @@ resource "azurerm_cdn_frontdoor_route" "route" {
 
   depends_on = [
     azurerm_cdn_frontdoor_origin_group.origin_group,
-    azurerm_cdn_frontdoor_origin.origin
+    azurerm_cdn_frontdoor_origin.origin,
+    azurerm_cdn_frontdoor_endpoint.endpoint
+
   ]
 }
 
