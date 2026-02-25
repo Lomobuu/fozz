@@ -39,7 +39,7 @@ locals {
 resource "azurerm_cdn_frontdoor_origin" "origin" {
   name                          = "${local.frontdoor_name}-origin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_group.id
-
+  enabled                      = true
   host_name                    = local.static_site_hostname
   origin_host_header           = local.static_site_hostname
   certificate_name_check_enabled = true
