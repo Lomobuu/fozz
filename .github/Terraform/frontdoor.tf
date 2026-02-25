@@ -48,3 +48,4 @@ resource "azurerm_cdn_frontdoor_origin" "origin" {
   https_port = 443
 }
 
+# Route is added manually to avoid creation errors with terraform

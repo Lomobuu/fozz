@@ -3,7 +3,8 @@ import Link from "next/link"
 // Import each MDX article
 import * as ephemeral from "./ephemeral/page.mdx"
 import * as mdx from "./mdx/page.mdx"
-import * as hosting from "./hosting/page.mdx"
+import * as static_website_automatic from "./static_website_automatic/page.mdx"
+import * as static_website_manual from "./static_website_manual/page.mdx"
 import * as tfstate from "./tfstate/page.mdx"
 import * as container from "./container/page.mdx"
 import * as backendportal from "./backendportal/page.mdx"
@@ -31,10 +32,16 @@ const posts: Post[] = [
     excerpt: mdx.meta.excerpt,
   },
     {
-    slug: "hosting",
-    title: hosting.meta.title,
-    date: new Date(hosting.meta.date),
-    excerpt: hosting.meta.excerpt,
+    slug: "static_website_manual",
+    title: static_website_manual.meta.title,
+    date: new Date(static_website_manual.meta.date),
+    excerpt: static_website_manual.meta.excerpt,
+  },
+    {
+    slug: "static_website_automatic",
+    title: static_website_automatic.meta.title,
+    date: new Date(static_website_automatic.meta.date),
+    excerpt: static_website_automatic.meta.excerpt,
   },
       {
     slug: "container",
