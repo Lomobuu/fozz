@@ -39,7 +39,7 @@ locals {
 resource "azurerm_cdn_frontdoor_origin" "origin" {
   name                          = "${local.frontdoor_name}-origin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_group.id
-  enabled                      = true
+
   host_name                    = local.static_site_hostname
   origin_host_header           = local.static_site_hostname
   certificate_name_check_enabled = true
@@ -48,4 +48,27 @@ resource "azurerm_cdn_frontdoor_origin" "origin" {
   https_port = 443
 }
 
-# Route is added manually to avoid creation errors with terraform
+
+resource "azurerm_cdn_frontdoor_route" "route" {
+  name                          = "${local.frontdoor_name}-route"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.endpoint.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.origin_group.id
+
+  cdn_frontdoor_origin_ids = [
+    azurerm_cdn_frontdoor_origin.origin.id
+  ]
+
+  supported_protocols = ["Http", "Https"]
+  patterns_to_match   = ["/*"]
+
+  forwarding_protocol     = "MatchRequest"
+  https_redirect_enabled  = true
+  link_to_default_domain  = true
+
+  depends_on = [
+    azurerm_cdn_frontdoor_origin_group.origin_group,
+    azurerm_cdn_frontdoor_origin.origin,
+    azurerm_cdn_frontdoor_endpoint.endpoint
+  ]
+}
+
