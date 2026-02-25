@@ -18,7 +18,7 @@ env:
     ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
     ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-    RESOURCE_GROUP: fozz-RG # Must already be created via backend.yaml
+    RESOURCE_GROUP: RG-Fozz-Management-weu # Must already be created via backend.yaml
     STORAGE_ACCOUNT: safozzmanagementweu # Must already be created via backend.yaml
 
 jobs:
