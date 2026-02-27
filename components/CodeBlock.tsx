@@ -16,15 +16,21 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
   let title: string | undefined = undefined;
 
   if (className) {
-    const langMatch = className.match(/language-(\w+)/);
+    const langMatch = className.match(/language-([\w-]+)/);
     if (langMatch) language = langMatch[1];
 
     const titleMatch = className.match(/:title=(.+)/);
     if (titleMatch) title = titleMatch[1];
   }
 
-  const cleanCode =
-    children.endsWith("\n") ? children.slice(0, -1) : children;
+  // Detect inline (single backtick) snippets:
+  const isSingleLine = !children.includes("\n");
+  const isInline = !className && isSingleLine;
+
+  // Normalize code content
+  let cleanCode = children;
+  if (isSingleLine) cleanCode = cleanCode.trim();
+  else if (cleanCode.endsWith("\n")) cleanCode = cleanCode.slice(0, -1);
 
   const handleCopy = async () => {
     try {
@@ -36,6 +42,16 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
     }
   };
 
+  // --- Inline render path: <code> only ---
+  if (isInline) {
+    return (
+      <code className="rounded bg-gray-900/70 text-gray-100 px-1.5 py-0.5 text-[0.95em]">
+        {cleanCode}
+      </code>
+    );
+  }
+
+  // --- Block render path: SyntaxHighlighter ---
   return (
     <div className="my-4 rounded-lg overflow-hidden shadow-md relative">
       {title && (
@@ -74,3 +90,4 @@ export default function CodeBlock({ className, children }: CodeBlockProps) {
     </div>
   );
 }
+``

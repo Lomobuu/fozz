@@ -1,53 +1,302 @@
 export const meta = {
-  title: "Ephemeral Environments",
-  date: "2026-02-22",
-  excerpt: "Ephemeral environments are temporary, automated setups...",
-}
-
-# My Second Post
-
-This is my first blog post, written in **MDX**.
-
-It supports Markdown, JSX, and Tailwind out of the box.
-
-You are reading the full article here.
+  title: "Ephemeral Environments with Azure, Terraform & GitHub Actions",
+  date: "2026-02-27",
+  excerpt:
+    "How to build fully automated per‑PR ephemeral environments on Azure using Terraform, GitHub Actions, and containerized .NET + React apps."
+};
 
 
-```yaml:title=workflow.yaml
-on: workflow_dispatch
+# Introduction
 
-name: BackendStorageCreate
+An ephemeral environment is a short-lived, isolated deployment of an application. They are usually based on a branch or PR/MR. Ephemeral environments are spun up on-demand for running tests, previewing features, and collaborating asynchronously across teams.
 
-permissions:
-  id-token: write # Require write permission to Fetch an OIDC token.
+This article describes the architecture, CI/CD workflows, and infrastructure structure used to implement ephemeral environments for a .NET + React application deployed on Azure using Terraform and GitHub Actions.
 
-env:
-  location: "westeurope"
-  terraformStorageRG: 'RG-Fozzen-Management-weu'
-  terraformStorageAccount: 'safozzenmanagementweu'
-  containerNameBackend: 'tfstate'
-  backendAzureRmKey: 'terraform.tfstate'
+---
 
-jobs:
+# Architecture Overview
 
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+<BlogImage
+  src="/docs/Ephemeral Environment.drawio.png"
+  alt="Ephemeral Environment Architecture"
+  size="large"
+/>
 
-    - name: Azure CLI script
-      uses: azure/cli@v2
-      with:
-        azcliversion: latest
-        inlineScript: |
-          az group create --location $location --name $terraformStorageRG
-          
-          az storage account create --name $terraformStorageAccount --resource-group $terraformStorageRG --location $location --sku Standard_LRS
-          
-          az storage container create --name $containerNameBackend --account-name $terraformStorageAccount
-```
+Each pull request targeting the `dev` branch triggers:
+
+1. Creation of an isolated Azure environment  
+2. Deployment of the application container images  
+3. Cleanup once the PR is closed or merged  
+
+### **Azure services used**
+
+- **App Services**  
+- **App Service Plan**  
+- **Log Analytics Workspace**  
+- **Application Insights**  
+- **Azure Container Registry (ACR)**  
+- **Azure Key Vault**  
+- **Storage Account / Storage Container**
+
+These components are provisioned via Terraform and parameterized based on PR numbers to ensure globally unique resource names.
+
+<Prerequisites
+  articles={[
+    {
+      title: "Terraform Backend Bootstrap using Azure OIDC",
+      href: "/blog/backendtf",
+      description: "Set up a secure backend using GitHub Actions and workload identity federation."
+    }
+  ]}
+/>
+
+---
+
+# Infrastructure as Code (IaC)
+
+Terraform is used to manage all Azure resources.
+
+### Naming & configuration files
+
+- **`locals.tf`** → Naming conventions  
+- **`variables.tf`** → Location, tags, and environment (`dev`, `test`, `prod`, or PR ID)
+
+### Landing zone assumption
+
+The `dev`, `test`, and `prod` resource groups are assumed to already exist.  
+These come from a **Cloud Adoption Framework (CAF)** landing zone:  
+https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/
+
+### Terraform state
+
+The state backend is stored in a dedicated `RG-Management` resource group:
+
+- Storage Account  
+- Containers per environment (including PR environments)
+
+The following scripts configure state storage:
+
+- `init-backend.yaml`  
+- `bootstrap-backend.sh`
+
+### Deployment behavior
+
+- **Pull request → dev** → fully automated ephemeral environment creation  
+- **Push → dev** → deploy to dev environment  
+- **Test & prod** → manual workflow dispatch only  
+
+This ensures production environments are controlled while PRs deploy automatically.
+
+---
+
+# CI/CD Pipeline
+
+This solution uses **7 GitHub Actions workflows**, grouped into provisioning, deployment, and cleanup.
+
+---
+
+## 1. Bootstrap Terraform Backend (one-time)
+
+Initializes Terraform state for `dev`, `test`, and `prod`.
+
+Only the resource group must exist beforehand.
+
+---
+
+## 2. Terraform Plan & Apply
+
+Triggered when Terraform files change or run manually.
+
+Steps:
+
+1. `terraform init`  
+2. `terraform plan`  
+3. `terraform apply`  
+
+---
+
+## 3. Container Build & Deploy
+
+Triggered on changes to the `dev` branch or run manually.
+
+Steps:
+
+1. Docker build  
+2. Read-only Terraform init  
+3. Push image to ACR  
+4. Deploy to App Services  
+
+---
+
+## 4. Terraform Destroy (manual cleanup)
+
+Manually destroy infrastructure for a selected environment.
+
+Steps:
+
+1. `terraform init`  
+2. `terraform plan`  
+3. `terraform destroy`  
+
+---
+
+## 5. PR Terraform Plan & Apply (Ephemeral IaC)
+
+Runs only for PRs targeting `dev`.
+
+Steps:
+
+1. `bootstrap-pr.sh` — sets up state container for PR  
+2. `terraform init`  
+3. `terraform plan`  
+4. `terraform apply` with PR number as the environment name  
+
+---
+
+## 6. PR Container Build & Deploy (Ephemeral App)
+
+Triggered after the ephemeral Terraform workflow completes.
+
+Steps:
+
+1. Build image from the triggering commit  
+2. Terraform init (lookup deployed resources)  
+3. Push to PR-specific ACR  
+4. Deploy to ephemeral App Service  
+
+---
+
+## 7. Cleanup PR Terraform Backend
+
+Triggered when the PR is closed or merged.
+
+Steps:
+
+1. `terraform init`  
+2. `terraform plan`  
+3. `terraform destroy`  
+
+---
+
+# Repository Structure
+
+### `.github/Terraform/prod`
+Terraform configuration for **dev**, **test**, and **prod** environments.
+
+### `.github/Terraform/pr`
+Terraform configuration for **ephemeral PR environments**.
+
+Differences:
+
+- Creates a **new resource group**  
+- Assigns **AcrPull** role automatically to the App Service managed identity  
+
+### `.github/workflow`
+All GitHub Actions pipelines.
+
+### `/reactapp.client`
+React frontend.
+
+### `/reactapp.Server`
+.NET backend.
+
+### `/docs`
+Documentation images (used in this article).
+
+---
+
+# Deployment & Data Flow
+
+## Ephemeral Environment Flow
+
+<BlogImage
+  src="/docs/Ephemeral Enviornments.jpg"
+  alt="Ephemeral Environments Data Flow"
+  size="large"
+/>
+
+1. Developer creates a feature branch  
+2. PR opened against `dev`  
+3. PR triggers IaC workflow  
+4. Terraform provisions ephemeral environment  
+5. Container workflow starts automatically  
+6. Image built + deployed to ephemeral App Service  
+7. Developer tests & validates  
+8. PR merged/closed triggers destruction  
+9. Environment removed automatically  
+
+---
+
+## Production Pipeline Flow
+
+<BlogImage
+  src="/docs/prod.jpg"
+  alt="Production Pipeline"
+  size="large"
+/>
+
+10. Change merged into `dev`  
+11. *(Optional)* Terraform applies infra updates  
+12. Docker image built & deployed to dev  
+13. Manual PR from `dev` → `test`  
+14. Manual workflow dispatch for test  
+15. Manual PR from `test` → `main`  
+16. Manual workflow dispatch for production  
+
+---
+
+# Troubleshooting
+
+---
+
+## “No available instances to satisfy this request”
+
+<BlogImage
+  src="/docs/error1.png"
+  alt="App Service Capacity Error"
+  size="medium"
+/>
+
+The region has temporarily exhausted App Service capacity.
+
+**Fix:** Retry the job after ~10 minutes.
+
+---
+
+## Application Error
+
+<BlogImage src="/docs/error2.png" alt="Application Error" size="medium" />
+
+Check logs under:  
+**App Service → Deployment Center → Logs**
+
+Common issues:
+
+- Missing `AcrPull` permissions  
+- Incorrect Dockerfile  
+- Failed container build  
+
+---
+
+## Resource Group Not Found
+
+Verify:
+
+- The resource group exists  
+- The service principal has correct access scope  
+
+---
+
+## Federated Credentials Error
+
+<BlogImage src="/docs/error3.png" alt="Federated Credentials Error" size="medium" />
+
+Error: AADSTS700213: No matching federated identity record found for presented assertion subject
+
+Check:
+
+- Branch, repo, and org names (case-sensitive!)  
+- Environment exists  
+- Federated credential configuration matches workflow  
+
+---
