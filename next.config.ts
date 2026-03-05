@@ -1,5 +1,6 @@
 import createMDX from '@next/mdx'
 import type { NextConfig } from 'next'
+import { withContentlayer } from "next-contentlayer";
 
 const nextConfig = {
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
@@ -9,6 +10,4 @@ const nextConfig = {
   },
 } satisfies NextConfig
 
-export default createMDX({
-  extension: /\.(md|mdx)$/,
-})(nextConfig)
+export default withContentlayer(nextConfig);

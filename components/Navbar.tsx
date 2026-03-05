@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Theme, applyTheme, themeEmitter } from '../app/lib/theme';
+import { Theme, applyTheme, themeEmitter } from '../lib/theme';
 import { SunIcon, MoonIcon, ComputerDesktopIcon, ArrowTopRightOnSquareIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
 
 export default function Navbar() {

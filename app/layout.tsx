@@ -1,7 +1,7 @@
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { Inter } from "next/font/google";
+import { Inter, Lora } from "next/font/google";
 
 export const metadata = {
   title: "Fozz",
@@ -13,9 +13,17 @@ const inter = Inter({
   display: "swap",
 });
 
+// Lora for headings
+const lora = Lora({
+  subsets: ["latin"],
+  variable: "--font-heading",
+  weight: ["400", "700"], // normal and bold
+  display: "swap",
+});
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${lora.variable}`}>
       <body className="font-sans bg-white dark:bg-black text-gray-900 dark:text-white min-h-screen flex flex-col">
         <Navbar />
 

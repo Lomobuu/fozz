@@ -1,90 +1,32 @@
-import Link from "next/link"
-
-// Import each MDX article
-import * as ephemeral from "./ephemeral/page.mdx"
-import * as mdx from "./mdx/page.mdx"
-import * as static_website_automatic from "./static_website_automatic/page.mdx"
-import * as static_website_manual from "./static_website_manual/page.mdx"
-import * as tfstate from "./tfstate/page.mdx"
-import * as container from "./container/page.mdx"
-import * as backendportal from "./backendportal/page.mdx"
-import * as backendtf from "./backendtf/page.mdx"
-
-type Post = {
-  slug: string
-  title: string
-  date: Date
-  excerpt: string
-}
-
-// Collect posts
-const posts: Post[] = [
-  {
-    slug: "ephemeral",
-    title: ephemeral.meta.title,
-    date: new Date(ephemeral.meta.date),
-    excerpt: ephemeral.meta.excerpt,
-  },
-  {
-    slug: "mdx",
-    title: mdx.meta.title,
-    date: new Date(mdx.meta.date),
-    excerpt: mdx.meta.excerpt,
-  },
-    {
-    slug: "static_website_manual",
-    title: static_website_manual.meta.title,
-    date: new Date(static_website_manual.meta.date),
-    excerpt: static_website_manual.meta.excerpt,
-  },
-    {
-    slug: "static_website_automatic",
-    title: static_website_automatic.meta.title,
-    date: new Date(static_website_automatic.meta.date),
-    excerpt: static_website_automatic.meta.excerpt,
-  },
-      {
-    slug: "container",
-    title: container.meta.title,
-    date: new Date(container.meta.date),
-    excerpt: container.meta.excerpt,
-  },
-    {
-    slug: "tfstate",
-    title: tfstate.meta.title,
-    date: new Date(tfstate.meta.date),
-    excerpt: tfstate.meta.excerpt,
-  },
-      {
-    slug: "backendportal",
-    title: backendportal.meta.title,
-    date: new Date(backendportal.meta.date),
-    excerpt: backendportal.meta.excerpt,
-  },
-      {
-    slug: "backendtf",
-    title: backendtf.meta.title,
-    date: new Date(backendtf.meta.date),
-    excerpt: backendtf.meta.excerpt,
-  }
-].sort((a, b) => b.date.getTime() - a.date.getTime()) // newest first
+import Link from "next/link";
+import { allPosts } from "../../.contentlayer/generated"
 
 export default function BlogPage() {
+  const posts = allPosts.sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
   return (
     <main className="max-w-4xl mx-auto px-6 py-12">
       <h1 className="text-4xl font-bold text-center mb-12">Blog</h1>
+
       <ul className="space-y-8">
-        {posts.map((post) => (
-          <li key={post.slug}>
-            <Link
-              href={`/blog/${post.slug}`}
-              className="block rounded-xl border p-6 transition hover:scale-[1.02] hover:shadow-lg"
-            >
-              <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
-              <p className="text-muted-foreground mb-1">{post.excerpt}</p>
-              <p className="text-sm text-gray-500">{post.date.toLocaleDateString()}</p>
-            </Link>
-          </li>
+        {posts.map((post: any) => (
+             <li key={post.slug}>
+              <Link
+                href={`/blog/${post.slug}`}
+                className="block rounded-xl border p-6 transition hover:scale-[1.02] hover:shadow-lg"
+              >
+                <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
+
+                <p className="text-muted-foreground mb-1">
+                  {post.excerpt}
+                </p>
+
+                <p className="text-sm text-gray-500">
+                </p>
+              </Link>
+            </li>
         ))}
       </ul>
     </main>
