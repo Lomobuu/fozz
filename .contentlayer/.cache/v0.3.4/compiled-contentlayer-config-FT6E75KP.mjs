@@ -22,10 +22,11 @@ var Post = defineDocumentType(() => ({
 }));
 var contentlayer_config_default = makeSource({
   contentDirPath: "content",
-  documentTypes: [Post]
+  documentTypes: [Post],
+  disableImportAliasWarning: true
 });
 export {
   Post,
   contentlayer_config_default as default
 };
-//# sourceMappingURL=compiled-contentlayer-config-YJVHWLOJ.mjs.map
+//# sourceMappingURL=compiled-contentlayer-config-FT6E75KP.mjs.map
