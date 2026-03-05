@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies and build
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npm run build # This command generates the static files in the 'build' directory (default for Create React App)
 
       - name: Azure Login
