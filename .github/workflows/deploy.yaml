@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main # Trigger on pushes to the main branch
-workflow_dispatch: # Optional manual trigger
+  workflow_dispatch: # Optional manual trigger
 
 permissions:
   id-token: write
