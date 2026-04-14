@@ -253,6 +253,132 @@ jobs:
               --account-name $terraformStorageAccount
 ```
 
+# Phase 4 (Different Method) — GitHub Workflow to Create Terraform Backend WITH terraform
+
+Seperate a bootstrap / terraform state configuration folder from the main infrastructure folder
+```bash
+└── .github/
+    └── Terraform/
+        ├── Bootstrap/
+        │   ├── main.tf
+        │   └── variables.tf
+        └── Infra/
+            ├── main.tf
+            ├── variables.tf
+            ├── keyvault.tf
+            └── database.tf
+```
+
+### main.tf
+
+```hcl:title=.github/Terraform/bootstrap/main.tf
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.68.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+
+resource "azurerm_resource_group" "backend" {
+  name     = var.resource_group_name
+  location = var.location
+}
+
+resource "azurerm_storage_account" "backend" {
+  name                     = var.storage_account_name
+  resource_group_name      = azurerm_resource_group.backend.name
+  location                 = azurerm_resource_group.backend.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
+
+  allow_nested_items_to_be_public = false
+}
+
+resource "azurerm_storage_container" "backend" {
+  name                  = var.container_name
+  storage_account_name  = azurerm_storage_account.backend.name
+  container_access_type = "private"
+}
+```
+
+### variables.tf
+
+```hcl:title=.github/Terraform/bootstrap/variables.tf
+variable "location" {
+  type    = string
+  default = "norwayeast"
+}
+
+variable "resource_group_name" {
+  type = string
+}
+
+variable "storage_account_name" {
+  type = string
+}
+
+variable "container_name" {
+  type    = string
+  default = "tfstate"
+}
+```
+
+### backend.yaml
+
+```yaml:title=.github/workflows/backend.yaml
+on: workflow_dispatch
+
+name: BackendStorageCreate
+
+permissions:
+  id-token: write # Require write permission to Fetch an OIDC token.
+  contents: read
+
+env:
+  location: "norwayeast"
+  terraformStorageRG: <resource-group-name>
+  terraformStorageAccount: <storage-account-name>
+  containerNameBackend: 'tfstate'
+  backendAzureRmKey: 'terraform.tfstate'
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+
+jobs:
+
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - uses: hashicorp/setup-terraform@v3
+
+    - name: Terraform Init (local)
+      working-directory: .github/Terraform/bootstrap
+      run: terraform init
+
+    - name: Terraform Apply (backend infra)
+      working-directory: .github/Terraform/bootstrap
+      run: |
+        terraform apply -auto-approve -var resource_group_name=$terraformStorageRG -var storage_account_name=$terraformStorageAccount
+
+```
+
+
+
+
 # Sources Used
 - [Terraform State Management: Understanding the Foundation of Infrastructure as Code](https://iamachs.com/blog/azure-terraform/part-4-state-management-basics)
 - [How to store Terraform state file in Azure Storage](https://www.coachdevops.com/2022/03/how-to-store-terraform-state-file-in.html)
