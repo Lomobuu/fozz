@@ -52,6 +52,16 @@ export default function Navbar() {
             Fozzen
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           </a>
+
+          <a
+            href="https://fznreactdotnet-appsvc-dev.azurewebsites.net/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1"
+          >
+            Home Board App
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </a>
         </div>
 
         {/* Right: Theme dropdown */}
