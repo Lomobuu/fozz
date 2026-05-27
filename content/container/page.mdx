@@ -1,13 +1,80 @@
 ---
-  title: Full React .NET Cloud & Container Setup
+  title: Fullstack React .NET Cloud & Container Setup
   date: 2026-02-21
   excerpt: A full setup solution for a React fronend and .NET backend using containerization, database, Git, GitHub actions and Terraform
 ---
 
-# My Second Post
+# Fullstack React .NET Cloud & Container Setup
 
-This is my first blog post, written in **MDX**.
+Simple Guide to build a fullstack application using .NET as backend and react as frontend. Published in Azure using GitHub, Terraform and GitHub actions.
 
-It supports Markdown, JSX, and Tailwind out of the box.
 
-You are reading the full article here.
+# Architecture Overview
+
+<BlogImage
+  src="/Reactdotnet.drawio.png"
+  alt="Reactdotnet"
+  size="large"
+/>
+
+
+The application consists of:
+
+- Frontend: React (TypeScript) - Vite
+- Backend: ASP.NET Core API
+- Database: Azure SQL
+- Deployment: Azure + GitHub Actions
+
+## Database Structure
+
+<BlogImage
+  src="/database.png"
+  alt="database"
+  size="large"
+/>
+
+## ✅ Prerequisites
+
+- Visual Studio Professsional 2026
+- Node.js
+- .NET SDK
+- SQL Server Management Studio (SMSS)
+- Docker / Podman
+- Azure CLI
+
+## Install .NET backend extentions
+
+
+### Install Entity Framework
+
+`dotnet add package Microsoft.EntityFrameworkCore` OR use nuget package manager
+
+`dotnet add package Microsoft.EntityFrameworkCore.SQLServer` OR use nuget package manager
+
+`dotnet add package Microsoft.EntityFrameworkCore.Tools` OR use nuget package manager
+
+### OpenAPI
+
+`dotnet add package Microsoft.AspNetCore.OpenAPI` OR use nuget package manager
+
+### Scalar for OpenAPI
+
+`dotnet add package Scalar.AspNetCore` OR use nuget package manager
+
+## Configure .Gitignore
+
+## Configure Dockerfile
+
+# Set up /Data
+
+# Set up Models
+
+# Set up Controllers
+
+# Set up Frontend
+
+## Set up api.js
+
+## Set up app.JSX
+
+## set up API frontend access
