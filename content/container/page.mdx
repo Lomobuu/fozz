@@ -1,12 +1,11 @@
 ---
   title: Fullstack React .NET Cloud & Container Setup
   date: 2026-02-21
-  excerpt: A full setup solution for a React fronend and .NET backend using containerization, database, Git, GitHub actions and Terraform
+  excerpt: A full setup solution for a React frontend and .NET backend using containerization, database, Git, GitHub actions and Terraform
 ---
 
-# Fullstack React .NET Cloud & Container Setup
-
-Simple Guide to build a fullstack application using .NET as backend and react as frontend. Published in Azure using GitHub, Terraform and GitHub actions.
+# Introduction
+This guide walks through building and deploying a fullstack React + .NET application using Azure, Docker, Terraform, and GitHub Actions. By the end, you’ll have a working cloud-deployed app with CI/CD and infrastructure as code.
 
 
 # Architecture Overview
@@ -16,6 +15,15 @@ Simple Guide to build a fullstack application using .NET as backend and react as
   alt="Reactdotnet"
   size="large"
 />
+
+## What you’ll build
+
+- A React frontend (Vite + TypeScript)
+- A .NET Web API backend
+- Azure SQL database
+- CI/CD pipeline with GitHub Actions
+- Dockerized deployment
+
 
 
 The application consists of:
@@ -35,15 +43,495 @@ The application consists of:
 
 ## ✅ Prerequisites
 
-- Visual Studio Professsional 2026
+- Visual Studio Professional 2026
 - Node.js
 - .NET SDK
-- SQL Server Management Studio (SMSS)
+- SQL Server Management Studio (SSMS)
 - Docker / Podman
 - Azure CLI
 
-## Install .NET backend extentions
+# Infrastructure
 
+Use **ONE** of the terraform backend options:
+
+<Prerequisites
+  articles={[
+    {
+      title: "Manual Terraform Backend Setup in Azure",
+      href: "/blog/backendportal",
+      description: "Create the Azure Storage Account manually via the Azure Portal."
+    },
+    {
+      title: "Terraform Backend Bootstrap using Azure OIDC",
+      href: "/blog/backendtf",
+      description: "Provision the backend using GitHub Actions and federated identity."
+    }
+  ]}
+/>
+
+## Terraform
+
+```hcl:title=main.tf
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "~> 4.58.0"
+    }
+  }
+backend "azurerm" {}
+}
+
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+    key_vault {
+      purge_soft_delete_on_destroy = true
+    }
+  }
+  use_oidc = true
+  resource_provider_registrations = "none"
+}
+
+data "azurerm_resource_group" "rg" {
+  name = "reactdotnet-${var.environment}-RG"
+}
+```
+
+```hcl:title=sql.tf
+resource "azurerm_mssql_server" "sqlServer" {
+  name                         = local.sql_server_name
+  resource_group_name          = data.azurerm_resource_group.rg.name
+  location                     = data.azurerm_resource_group.rg.location
+  administrator_login          = "mradministrator"
+  administrator_login_password = azurerm_key_vault_secret.admin-pw.value
+  version                      = "12.0" # required, fixed for Azure SQL
+}
+
+resource "azurerm_mssql_database" "sqlDB" {
+  name           = local.sql_db_name
+  server_id      = azurerm_mssql_server.sqlServer.id
+  sku_name       = "Basic"  # closest equivalent to B_Gen5_1
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  max_size_gb    = 2
+}
+
+
+
+resource "azurerm_mssql_firewall_rule" "sqlfw" {
+  name             = "allowAzure"
+  server_id        = azurerm_mssql_server.sqlServer.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+}
+```
+
+```hcl:title=kv.tf
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_key_vault" "keyvault" {
+  name                        = local.kv_name
+  location                    = data.azurerm_resource_group.rg.location
+  resource_group_name         = data.azurerm_resource_group.rg.name
+  enabled_for_disk_encryption = true
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = false
+  rbac_authorization_enabled = true
+
+
+    network_acls {
+    bypass           = "AzureServices"
+    default_action   = "Allow"
+
+  }
+
+  sku_name = "standard"
+    tags = {
+    Environment = var.environment
+  }
+}
+
+resource "azurerm_role_assignment" "kv_admin" {
+  scope                = azurerm_key_vault.keyvault.id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+
+
+
+resource "azurerm_key_vault_secret" "ConnectionStringSecret" {
+  name = "sql-connectionstring"
+
+  value = "Server=tcp:${azurerm_mssql_server.sqlServer.name}.database.windows.net,1433;Initial Catalog=${azurerm_mssql_database.sqlDB.name};User ID=${azurerm_mssql_server.sqlServer.administrator_login};Password=${azurerm_mssql_server.sqlServer.administrator_login_password};encrypt=true;trustServerCertificate=false"
+
+  key_vault_id = azurerm_key_vault.keyvault.id
+
+  depends_on = [azurerm_role_assignment.kv_admin]
+}
+
+
+
+resource "random_password" "admin-pw" {
+  length = 16
+  min_numeric = 4
+  special = true
+  override_special = "_%@"
+}
+
+resource "azurerm_key_vault_secret" "admin-pw" {
+  name         = "admin-pw"
+  key_vault_id = azurerm_key_vault.keyvault.id
+  value        = random_password.admin-pw.result
+
+  depends_on = [
+    azurerm_role_assignment.kv_admin
+  ]
+}
+```
+
+```hcl:title=appservice.tf
+resource "azurerm_app_service_plan" "appPlan" {
+  name                = local.app_plan_name
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+  kind     = "Linux"
+  reserved = true
+
+  sku {
+    tier = "Standard"
+    size = "S1"
+  }
+    tags = {
+    Environment = var.environment
+  }
+}
+
+resource "azurerm_app_service" "AppSvc" {
+  name                = local.webapp_name
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+  app_service_plan_id = azurerm_app_service_plan.appPlan.id
+
+# Set container to a default template
+  site_config {
+    linux_fx_version = "DOCKER|mcr.microsoft.com/azuredocs/aci-helloworld:latest"
+    acr_use_managed_identity_credentials = true
+  }
+
+app_settings = {
+  APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.appi.connection_string
+  "ConnectionStrings__DefaultConnection"         = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ConnectionStringSecret.id})"
+}
+
+    identity {
+    type = "SystemAssigned"
+  }
+
+
+# Make sure template only set at first creation as well as authentication to ACR registry
+  lifecycle {
+  ignore_changes = [
+    site_config[0].linux_fx_version,
+  ]
+}
+
+    tags = {
+    Environment = var.environment
+  }
+  }
+  
+    # Give new role assignment AcrPull to identity that pulls image from container registry
+resource "azurerm_role_assignment" "acrrole" {
+  role_definition_name = "AcrPull"
+  scope                = azurerm_container_registry.acr.id
+  principal_id         = azurerm_app_service.AppSvc.identity[0].principal_id
+}
+```
+
+```hcl:title=container-reg.tf
+resource "azurerm_container_registry" "acr" {
+  name                = local.acr_name
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  sku                 = "Basic"
+  admin_enabled       = false
+    tags = {
+    Environment = var.environment
+  }
+}
+
+```
+
+```hcl:title=variables.tf
+variable "location" {
+  type        = string
+  description = "Azure region to deploy resources"
+  default = "norwayeast"
+}
+
+variable "environment" {
+  type        = string
+  description = "Deployment environment (dev, test, prod)"
+  default = "dev" ## Set default to dev, if no env is chosen, dev is set
+}
+
+variable "tags" {
+  type        = map(string)
+  description = "Common tags to apply to all resources"
+  default     = {}
+}
+
+
+```
+
+```hcl:title=locals.tf
+locals {
+  # Make the environment lower-case, e.g. PR123 → pr123
+  env = lower(var.environment)
+
+  # Your base project name
+  base = ""
+
+  # Storage account: no dashes allowed
+  storage_account_name = "${local.base}strg${local.env}"
+
+  # ACR - no dashes allowed
+  acr_name         = "${local.base}reg${local.env}"
+  acr_login_server = "${local.acr_name}.azurecr.io"
+
+  # Web app
+  webapp_name = "${local.base}-appsvc-${local.env}"
+  app_plan_name = "${local.base}-appplan-${local.env}"
+
+  # key vault
+  kv_name = "${local.base}-kv-${local.env}"
+
+  # Log
+  log_analytics_name = "${local.base}-log-${local.env}"
+  appi_name = "${local.base}-appi-${local.env}"
+
+  sql_server_name = "${local.base}-sqlserver-${local.env}"
+  sql_db_name = "${local.base}-sqldb-${local.env}"
+
+  # Tags
+  all_tags = merge(
+    {
+      environment = local.env
+      project     = local.base
+    },
+    var.tags
+  )
+}
+
+output "acr_name" {
+  value = local.acr_name
+}
+output "acr_login_server" {
+  value = local.acr_login_server
+}
+output "webapp_name" {
+  value = local.webapp_name
+}
+```
+
+## Workflows
+
+```yaml:title=terraform.yaml
+name: 'Terraform Plan & Apply'
+
+on:
+  push:
+    branches:
+      - dev
+    paths: 
+    - '.github/Terraform/**' 
+    - '.github/workflows/terraform.yaml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - test
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+    location: norwayeast
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+    ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+    RESOURCE_GROUP: reactdotnet-management-RG # Must already be created
+    STORAGE_ACCOUNT: tfstatereactdotnetfozzen # Created via the bootstrap
+
+jobs:
+  terraform:
+        name: Deploy to Azure
+        environment: ${{ github.event.inputs.environment || 'dev' }}
+        runs-on: ubuntu-latest
+        # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+        defaults:
+          run:
+            working-directory: .github/Terraform/prod
+            shell: bash
+
+        steps:
+        # Checkout the repository to the GitHub Actions runner
+        - name: Checkout
+          uses: actions/checkout@v3
+
+        # Install the latest version of Terraform CLI 
+        - name: Setup Terraform
+          uses: hashicorp/setup-terraform@v1
+
+        # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+
+        # NB hardcoded storage account & RG name
+        - name: Terraform Init
+          run: |
+            terraform init \
+              -backend-config="resource_group_name=$RESOURCE_GROUP" \
+              -backend-config="storage_account_name=$STORAGE_ACCOUNT" \
+              -backend-config="container_name=tfstate-$environment" \
+              -backend-config="key=terraform.tfstate" \
+              -backend-config="use_oidc=true"
+
+
+        - name: Terraform Format
+          run: terraform fmt -recursive
+
+        # Validate before Planning
+        - name: Terraform Validate
+          run: terraform validate 
+
+
+        - name: Terraform Plan
+          run: terraform plan -input=false -var location=$location -var environment=$environment
+          
+        - name: Terraform Apply
+          run: terraform apply -auto-approve -input=false -var location=$location -var environment=$environment
+```
+
+```yaml:title=docker-cicd.yaml
+name: "Container Build & Deploy"
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ENVIRONMENT: ${{ github.ref_name == 'dev' && 'dev'
+                || github.ref_name == 'test' && 'test'
+                || github.ref_name == 'main' && 'prod' }}
+  RESOURCE_GROUP: reactdotnet-management-RG # Must already be created
+  STORAGE_ACCOUNT: tfstatereactdotnetfozzen # Created via the bootstrap
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
+    outputs: # Set metadata that next job needs
+      webapp_name: ${{ steps.tf.outputs.webapp_name }}
+      image_tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_wrapper: false
+       
+      # Terraform Init (Read Only) to get environment names
+      - name: Terraform Init
+        working-directory: .github/Terraform/prod
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=$RESOURCE_GROUP" \
+            -backend-config="storage_account_name=$STORAGE_ACCOUNT" \
+            -backend-config="container_name=tfstate-$ENVIRONMENT" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="use_oidc=true"
+
+      - name: Read Terraform outputs
+        id: tf
+        working-directory: .github/Terraform/prod
+        shell: bash
+        run: |
+          echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
+          echo "webapp_name=$(terraform output -raw webapp_name)" >> $GITHUB_OUTPUT
+
+
+      - name: Login to ACR via OIDC
+        run: az acr login --name ${{ steps.tf.outputs.acr_name }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ steps.tf.outputs.acr_login_server }}/${{ github.repository }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          context: .
+          file: ReactApp1.Server/Dockerfile
+          cache-from: type=gha
+          tags: ${{ steps.meta.outputs.tags }}
+
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ needs.build.outputs.webapp_name }}
+          images: ${{ needs.build.outputs.image_tags }}
+```
+# Backend
+
+## Install .NET backend extentions
 
 ### Install Entity Framework
 
@@ -61,20 +549,434 @@ The application consists of:
 
 `dotnet add package Scalar.AspNetCore` OR use nuget package manager
 
-## Configure .Gitignore
+## Configure .gitignore
+Make sure the .gitignore is set up and includes important files that should not be in the git repo such as appsettings files.
+
+Also a good idea to remove node_modules, obj & bin to reduce repo size.
+
+example .gitignore file:
+
+```md:title=.gitignore
+bin/
+obj/
+out/
+.env
+.env.*
+appsettings.Development.json
+appsettings.*.Local.json
+node_modules/
+dist/
+build/
+.cache/
+coverage/
+.vs/
+```
 
 ## Configure Dockerfile
 
+Make sure you build both frontend and backend
+
+```md:title=DOCKERFILE
+
+Example Dockerfile
+
+# ---------- Build React ----------
+FROM node:20-alpine AS react-build
+WORKDIR /client
+
+COPY reactapp1.client/package*.json ./
+RUN npm ci
+
+COPY reactapp1.client .
+RUN npm run build
+
+
+# ---------- Build .NET ----------
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet-build
+WORKDIR /src
+
+COPY ReactApp1.Server/ReactApp1.Server.csproj ReactApp1.Server/
+RUN dotnet restore ReactApp1.Server/ReactApp1.Server.csproj
+
+COPY ReactApp1.Server ReactApp1.Server
+
+# Copy React output into ASP.NET static files
+COPY --from=react-build /client/dist ReactApp1.Server/wwwroot
+
+WORKDIR /src/ReactApp1.Server
+RUN dotnet publish -c Release -o /app /p:UseAppHost=false
+
+
+# ---------- Runtime ----------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+
+COPY --from=dotnet-build /app .
+
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "ReactApp1.Server.dll"]
+```
+
 # Set up /Data
+
+DataContext defines the database structure for the app and maps the models to tables in Entity Framework Core. It also configures the relationship between Problem and Hold through the ProblemHold join table.
+
+```cs:title=DataContext.cs
+using Microsoft.EntityFrameworkCore;
+using ReactApp1.Server.Model;
+
+namespace ReactApp1.Server.Data
+{
+    public class DataContext : DbContext
+    {
+        public DataContext(DbContextOptions<DataContext> options) : base(options) { }
+        public DbSet<Hold> Hold { get; set; }
+        public DbSet<Problem> Problem { get; set; }
+        public DbSet<ProblemHold> ProblemHolds { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ProblemHold>()
+                .HasOne(ph => ph.Problem)
+                .WithMany()
+                .HasForeignKey(ph => ph.ProblemId);
+
+            modelBuilder.Entity<ProblemHold>()
+                .HasOne(ph => ph.Hold)
+                .WithMany()
+                .HasForeignKey(ph => ph.HoldId);
+        }
+
+    }
+}
+```
 
 # Set up Models
 
+These classes represent the core domain models of the application. Hold and Problem store the main data, while ProblemHold links them together and adds extra information like order and role. Together, they define the structure of the data that gets stored and queried through Entity Framework Core.
+
+```cs:title=hold.cs
+namespace ReactApp1.Server.Model
+{
+    public class Hold
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Color { get; set; } = string.Empty;
+        public string Position { get; set; } = string.Empty;
+        public float PositionX { get; set; }
+        public float PositionY { get; set; }
+    }
+}
+
+```
+
+```cs:title=problem.cs
+namespace ReactApp1.Server.Model
+{
+    public class Problem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Grade { get; set; } = string.Empty;
+    } 
+}
+
+```
+
+```cs:title=problemHold.cs
+namespace ReactApp1.Server.Model
+{
+    public class ProblemHold
+    {
+        public int Id { get; set; }
+        public int ProblemId { get; set; }
+        public int HoldId { get; set; }
+        public int HoldOrder { get; set; }
+        public string Role { get; set; }
+
+        public Problem? Problem { get; set; }
+        public Hold? Hold { get; set; }
+    }
+}
+
+```
+
 # Set up Controllers
+
+These controllers expose the API endpoints for managing Hold, Problem, and ProblemHold data, handling standard CRUD operations through HTTP requests. They use the DataContext to interact with the database and return results to the client.
+
+```cs:title=HoldController.cs
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using ReactApp1.Server.Data;
+using ReactApp1.Server.Model;
+using Microsoft.EntityFrameworkCore;
+
+namespace ReactApp1.Server.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class HoldsController : ControllerBase
+    {
+        private readonly DataContext _context;
+
+        public HoldsController(DataContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<List<Hold>>> GetAll() =>
+            Ok(await _context.Hold.ToListAsync());
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Hold>> GetById(int id)
+        {
+            var hold = await _context.Hold.FindAsync(id);
+            return hold is null ? NotFound() : Ok(hold);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<Hold>> Create(Hold hold)
+        {
+            _context.Hold.Add(hold);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetById), new { id = hold.Id }, hold);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var hold = await _context.Hold.FindAsync(id);
+            if (hold is null) return NotFound();
+            _context.Hold.Remove(hold);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, Hold hold)
+        {
+            if (id != hold.Id) return BadRequest();
+            _context.Entry(hold).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+    }
+}
+```
+
+```cs:title=ProblemsController.cs
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ReactApp1.Server.Data;
+using ReactApp1.Server.Model;
+
+namespace ReactApp1.Server.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProblemsController : ControllerBase
+    {
+        private readonly DataContext _context;
+
+        public ProblemsController(DataContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<List<Problem>>> GetAll() =>
+            Ok(await _context.Problem.ToListAsync());
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Problem>> GetById(int id)
+        {
+            var problem = await _context.Problem.FindAsync(id);
+            return problem is null ? NotFound() : Ok(problem);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<Problem>> Create(Problem problem)
+        {
+            _context.Problem.Add(problem);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetById), new { id = problem.Id }, problem);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var problem = await _context.Problem.FindAsync(id);
+            if (problem is null) return NotFound();
+            _context.Problem.Remove(problem);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+    }
+}
+```
+
+```cs:title=ProblemHoldsController.cs
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ReactApp1.Server.Data;
+using ReactApp1.Server.Model;
+
+namespace ReactApp1.Server.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProblemHoldsController : ControllerBase
+    {
+        private readonly DataContext _context;
+
+        public ProblemHoldsController(DataContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<List<ProblemHold>>> GetAll() =>
+            Ok(await _context.ProblemHolds.Include(ph => ph.Hold).Include(ph => ph.Problem).ToListAsync());
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<ProblemHold>> GetById(int id)
+        {
+            var ph = await _context.ProblemHolds
+                .Include(ph => ph.Hold)
+                .Include(ph => ph.Problem)
+                .FirstOrDefaultAsync(ph => ph.Id == id);
+            return ph is null ? NotFound() : Ok(ph);
+        }
+
+        [HttpGet("byproblem/{problemId}")]
+        public async Task<ActionResult<List<ProblemHold>>> GetByProblem(int problemId) =>
+            Ok(await _context.ProblemHolds
+                .Where(ph => ph.ProblemId == problemId)
+                .Include(ph => ph.Hold)
+                .OrderBy(ph => ph.HoldOrder)
+                .ToListAsync());
+
+        [HttpPost]
+        public async Task<ActionResult<ProblemHold>> Create(ProblemHold problemHold)
+        {
+            _context.ProblemHolds.Add(problemHold);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetById), new { id = problemHold.Id }, problemHold);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var ph = await _context.ProblemHolds.FindAsync(id);
+            if (ph is null) return NotFound();
+            _context.ProblemHolds.Remove(ph);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, ProblemHold problemHold)
+        {
+            if (id != problemHold.Id) return BadRequest();
+            _context.Entry(problemHold).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+    }
+}
+```
+
+# Migrate Database
+
+Run these commands after model, data and appsettings connected to your database is set up.
+
+`dotnet ef migrations add InitialCreate`
+
+`dotnet ef database update`
 
 # Set up Frontend
 
 ## Set up api.js
 
-## Set up app.JSX
+This file acts as a small API client layer for the frontend, handling all HTTP requests to the backend using fetch. It centralizes calls for creating, reading, updating, and deleting Problem, Hold, and ProblemHold data, making it easy for the UI to interact with the API.
 
-## set up API frontend access
+```js:title=api.js
+const BASE_URL = import.meta.env.DEV
+    ? 'https://localhost:7127/api'
+    : '/api';
+
+export const getProblems = async () => {
+    const res = await fetch(`${BASE_URL}/problems`);
+    return res.json();
+};
+
+export const getHolds = async () => {
+    const res = await fetch(`${BASE_URL}/holds`);
+    return res.json();
+};
+
+export const deleteHold = async (id) => {
+    await fetch(`${BASE_URL}/holds/${id}`, { method: 'DELETE' });
+};
+
+export const updateHold = async (id, hold) => {
+    await fetch(`${BASE_URL}/holds/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hold),
+    });
+};
+
+export const deleteProblem = async (id) => {
+    await fetch(`${BASE_URL}/problems/${id}`, { method: 'DELETE' });
+};
+
+export const createProblem = async (problem) => {
+    const res = await fetch(`${BASE_URL}/problems`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(problem),
+    });
+    return res.json();
+};
+
+export const createHold = async (hold) => {
+    const res = await fetch(`${BASE_URL}/holds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hold),
+    });
+    return res.json();
+};
+
+export const createProblemHold = async (problemHold) => {
+    await fetch(`${BASE_URL}/problemholds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(problemHold),
+    });
+};
+
+export const getProblemHolds = async (problemId) => {
+    const res = await fetch(`${BASE_URL}/problemholds/byproblem/${problemId}`);
+    return res.json();
+};
+
+export const updateProblemHold = async (id, problemHold) => {
+    await fetch(`${BASE_URL}/problemholds/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(problemHold),
+    });
+};
+
+export const deleteProblemHold = async (id) => {
+    await fetch(`${BASE_URL}/problemholds/${id}`, { method: 'DELETE' });
+};
+```
+
+
