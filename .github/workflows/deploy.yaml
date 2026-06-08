@@ -6,8 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-
 permissions:
   id-token: write
   contents: read
