@@ -6,12 +6,14 @@ import { List, ListItem } from "@/components/List";
 import MDXLink from "@/components/mdxLink";
 import TechStack from "@/components/svg";
 import Prerequisites from "@/components/prereq";
+import NewBadge from "@/components/NewBadge";
 
 export const components: MDXComponents = {
   code: CodeBlock,
   BlogImage,
   TechStack,
   Prerequisites,
+  NewBadge,
   img: (props) => <BlogImage src={props.src ?? ""} alt={props.alt ?? ""} size="large" />,
   a: MDXLink,
   h1: (props) => <h1 {...props} className="font-heading text-4xl font-bold mt-12 mb-4 " />,

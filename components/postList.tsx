@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import NewBadge from "@/components/NewBadge";
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleDateString("en-US", {
@@ -35,9 +36,24 @@ export default function PostList({ posts }: { posts: any[] }) {
           >
             <Link
               href={`/blog/${post.slug}`}
-              className="block rounded-xl border p-6 transition hover:scale-[1.02] hover:shadow-lg"
+              className={
+                post.isNew
+                  ? "block rounded-xl border border-transparent p-6 transition hover:scale-[1.02] ring-2 ring-orange-400/70 bg-gradient-to-br from-rose-500/10 via-orange-500/10 to-yellow-500/10 shadow-lg shadow-orange-500/20 hover:shadow-xl hover:shadow-orange-500/30"
+                  : "block rounded-xl border p-6 transition hover:scale-[1.02] hover:shadow-lg"
+              }
             >
-              <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
+              <h2 className="text-2xl font-semibold mb-2 flex items-center flex-wrap gap-y-2">
+                {post.isNew && <NewBadge />}
+                <span
+                  className={
+                    post.isNew
+                      ? "bg-gradient-to-r from-rose-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent font-bold"
+                      : undefined
+                  }
+                >
+                  {post.title}
+                </span>
+              </h2>
 
                 <p className="text-sm text-gray-500 mb-3">
                 {formatDate(post.date)}

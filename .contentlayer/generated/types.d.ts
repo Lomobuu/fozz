@@ -16,6 +16,7 @@ export type Post = {
   title: string
   date: string
   excerpt: string
+  isNew: boolean
   /** MDX file body */
   body: MDX
   slug: string

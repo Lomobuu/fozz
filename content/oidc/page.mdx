@@ -1,0 +1,64 @@
+---
+  title: GitHub's New Immutable OIDC Subject Claims; Updating Your Azure Federated Credentials
+  date: 2026-08-07
+  excerpt: Learn how to configure Federated Credentials in Azure using OpenID Connect (OIDC), enabling secretless, secure authentication between GitHub Actions and Terraform for your CI/CD pipelines.
+  isNew: true
+---
+
+## What This Guide Covers
+
+What's changed is the `subject` claim GitHub issues in its OIDC tokens. For repositories created (or renamed/transferred) after **July 15, 2026**, GitHub now issues an immutable subject based on owner and repository *IDs* rather than their names — so a federated credential configured with the old `repo:org/repo:ref:refs/heads/main` format may no longer match, depending on when your repo was created. 
+
+To the new: `repo:{Organization}@{Organization ID}/{Repository}@{Repository ID}:ref:refs/heads/main`
+ 
+Here's the full walkthrough, from creating the app registration to storing the final values in GitHub.
+
+
+1. Sign in to the [Microsoft Entra admin center](https://entra.microsoft.com) and go to **Entra ID > App registrations > New registration**.
+2. Give it a descriptive name — something that ties it to the workflow it'll authenticate, e.g. `gh-actions-terraform-prod`.
+3. Leave **Redirect URI** blank; you don't need one for this flow.
+4. Select **Register**.
+
+<BlogImage 
+  src="/serviceacc.png" 
+  alt="Create Service Principal"
+  size="medium" 
+/>
+
+Once it's created, grab the following from the **Overview** page — you'll need them later:
+ 
+- **Application (client) ID**
+- **Directory (tenant) ID**
+
+<BlogImage 
+  src="/fedcred1.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>
+
+This is where you tell Azure to trust tokens issued by GitHub for this specific app.
+ 
+1. In your app registration, go to **Certificates & secrets | Federated credentials**, then select **Add credential**.
+2. From the **Federated credential scenario** dropdown, choose **GitHub Actions deploying Azure resources**.
+3. Fill in:
+   - Organization — your GitHub org or username
+   - **Organization ID** — your GitHub org ID
+   - Repository — the repo name
+   - **Repository ID** — your GitHub repository ID
+   - Entity type — Branch, Tag, Environment, or Pull request
+   - GitHub branch name / environment name — depending on the entity type you picked
+
+You can find your OIDC information under: /settings/actions/oidc-configuration
+
+<BlogImage 
+  src="/subject claim prefix.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>
+
+
+<BlogImage 
+  src="/fedcrednew.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>

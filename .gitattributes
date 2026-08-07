@@ -1,0 +1,6 @@
+# Contentlayer parses frontmatter with gray-matter + the `yaml` package, and the
+# last frontmatter line keeps a trailing \r under CRLF. That turns `isNew: true`
+# into the string "true\r", which fails boolean validation and makes Contentlayer
+# skip the entire document. Keep content files LF so frontmatter parses correctly.
+content/**/*.mdx text eol=lf
+*.mdx text eol=lf

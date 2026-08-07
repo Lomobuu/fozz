@@ -9,6 +9,7 @@ export const Post = defineDocumentType(() => ({
     title: { type: "string", required: true },
     date: { type: "string", required: true },
     excerpt: { type: "string", required: true },
+    isNew: { type: "boolean", required: false, default: false },
   },
 
   computedFields: {
