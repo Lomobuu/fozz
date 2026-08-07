@@ -6,11 +6,27 @@
 ---
 
 ## What This Guide Covers
+<BlogImage 
+  src="/fedcrednew.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>
 
 What's changed is the `subject` claim GitHub issues in its OIDC tokens. For repositories created (or renamed/transferred) after **July 15, 2026**, GitHub now issues an immutable subject based on owner and repository *IDs* rather than their names — so a federated credential configured with the old `repo:org/repo:ref:refs/heads/main` format may no longer match, depending on when your repo was created. 
 
 To the new: `repo:{Organization}@{Organization ID}/{Repository}@{Repository ID}:ref:refs/heads/main`
- 
+
+## Quick Walkthrough
+
+Github->Repository ->/settings/actions/oidc-configuration
+<BlogImage 
+  src="/subject claim prefix.png" 
+  alt="Federated Credentials setup step 1"
+  size="medium" 
+/>
+
+## Full Walkthrough
+
 Here's the full walkthrough, from creating the app registration to storing the final values in GitHub.
 
 
@@ -25,10 +41,88 @@ Here's the full walkthrough, from creating the app registration to storing the f
   size="medium" 
 />
 
-Once it's created, grab the following from the **Overview** page — you'll need them later:
+## Permissions
+This example will use permissions to use terraform to set up a backend tfstate storage for further terraform use.
+
+The Service Principal needs permission to create:
+
+- Resource Groups
+- Storage Accounts
+- Blob Containers
+
+Assign:
+
+**Contributor** role  
+Scope: The subscription or specific resource group
+
+<BlogImage 
+  src="/roleassignment1.png" 
+  alt="Create role assignment"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/contributor.png" 
+  alt="Contributor role"
+  size="medium" 
+/>
+
+Keep permissions scoped as narrowly as possible.
+
+Once it's created, grab the following from the **Overview** page
  
 - **Application (client) ID**
 - **Directory (tenant) ID**
+
+Although we are not storing passwords, GitHub still needs:
+
+- Client ID  
+- Tenant ID  
+- Subscription ID  
+
+These identify **where** authentication should happen.
+
+Locate them in Azure:
+
+<BlogImage 
+  src="/tenantobjid.png" 
+  alt="Tenant and Client ID"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/subid.png" 
+  alt="Subscription ID"
+  size="medium" 
+/>
+
+---
+
+## Add Them to GitHub
+
+In your repository:
+
+Settings → Secrets and variables → Actions → New repository secret
+
+Add:
+
+- AZURE_CLIENT_ID
+- AZURE_TENANT_ID
+- AZURE_SUBSCRIPTION_ID
+
+<BlogImage 
+  src="/secret1.png" 
+  alt="GitHub secret setup step 1"
+  size="medium" 
+/>
+
+<BlogImage 
+  src="/secret2.png" 
+  alt="GitHub secret setup step 2"
+  size="medium" 
+/>
+
+These are identifiers — not passwords.
 
 <BlogImage 
   src="/fedcred1.png" 
