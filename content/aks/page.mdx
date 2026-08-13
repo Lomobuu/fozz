@@ -1,0 +1,252 @@
+---
+title: Set up Azure Kubernetes Service w/ Terraform & Install ArgoCD
+date: 2026-08-07
+excerpt: With an AKS cluster provisioned via Terraform, the next step is getting ArgoCD up and running. This guide walks through connecting to the cluster, installing ArgoCD, exposing it externally, and logging in for the first time — setting the stage for GitOps-driven deployments.
+---
+
+In this guide, we'll provision an Azure Kubernetes Service (AKS) cluster using Terraform, then install [ArgoCD](https://argo-cd.readthedocs.io/en/stable/) — a declarative, GitOps continuous delivery tool for Kubernetes.
+
+This guide is intentionally short: it covers everything from provisioning the cluster to logging into ArgoCD for the first time. Setting up ingress, TLS, SSO, and application deployments will be covered in the next guide.
+
+## Prerequisites
+
+- An Azure subscription with the required permissions to create resource groups and AKS clusters
+- [Terraform](https://developer.hashicorp.com/terraform/install) installed
+- The [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) installed and authenticated
+- [`kubectl`](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
+- A remote state backend already set up (this guide assumes an existing storage account for Terraform state — adjust the `backend` block below if yours is named differently)
+
+## Provision the AKS cluster with Terraform
+
+The Terraform module below follows the [Azure Cloud Adoption Framework](https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/naming-and-tagging) naming convention (`<type-abbrev>-<workload>-<env>-<region>`), driven from a single set of locals so every resource name stays consistent.
+
+### `locals.tf`
+
+Centralizes the naming logic. Every resource name in the module is derived from here rather than being inlined in individual files:
+
+```hcl
+locals {
+  base = "tflocal"
+
+  region_short = {
+    norwayeast  = "noe"
+    norwaywest  = "now"
+    westeurope  = "weu"
+    northeurope = "neu"
+  }
+  region = local.region_short[var.location]
+
+  suffix         = "${local.base}-${var.env}-${local.region}"
+  suffix_compact = "${local.base}${var.env}${local.region}"
+
+  rg_name       = "rg-${local.suffix}"
+  keyvault_name = "kv-${local.suffix}"
+  cluster_name  = "aks-${local.suffix}"
+  aca_env_name  = "cae-${local.suffix}"
+  aca_app_name  = "ca-${local.suffix}"
+
+  acr_name         = "acr${local.suffix_compact}"
+  acr_login_server = "${local.acr_name}.azurecr.io"
+
+  aks_dns_prefix = local.suffix_compact
+}
+```
+
+### `variables.tf`
+
+Two variables drive the whole module: the environment name and the Azure region. Both are validated so a typo fails at plan time instead of producing a broken resource name:
+
+```hcl
+variable "env" {
+  type    = string
+  default = "test"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{2,9}$", var.env))
+    error_message = "env must be 2-9 lowercase alphanumeric characters (the 9-character cap keeps local.keyvault_name inside Key Vault's 24-character limit)."
+  }
+}
+
+variable "location" {
+  type    = string
+  default = "westeurope"
+
+  validation {
+    condition     = contains(["norwayeast", "norwaywest", "westeurope", "northeurope"], var.location)
+    error_message = "location must be one of: norwayeast, norwaywest, westeurope, northeurope. Add it to local.region_short and to this list to allow another region."
+  }
+}
+```
+
+### `main.tf`
+
+Configures the `azurerm` provider with OIDC authentication and a remote backend, and creates the resource group everything else lives in:
+
+```hcl
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.68.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.4.3"
+    }
+  }
+  backend "azurerm" {
+    resource_group_name  = "RG-tflocal-Management-weu"
+    storage_account_name = "satflocalmanagementweu"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+    use_oidc             = true
+  }
+
+}
+
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+
+    key_vault {
+      purge_soft_delete_on_destroy = false
+    }
+  }
+  use_oidc = true
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = local.rg_name
+  location = var.location
+}
+```
+
+### `aks.tf`
+
+The AKS cluster itself — a single-node `Standard_B2s_v2` default node pool with a system-assigned managed identity, which is enough to get ArgoCD running:
+
+```hcl
+resource "azurerm_kubernetes_cluster" "aks" {
+  name                = local.cluster_name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  dns_prefix          = local.aks_dns_prefix
+
+  default_node_pool {
+    name       = "default"
+    node_count = 1
+    vm_size    = "Standard_B2s_v2"
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = {
+    Environment = var.env
+  }
+}
+```
+
+### Deploy the cluster
+
+With all four files in place, initialize Terraform and apply:
+
+```bash
+terraform init
+
+terraform plan
+
+terraform apply
+```
+
+Once `terraform apply` completes, the AKS cluster will be up and running in Azure, ready to connect to.
+
+## Connect to the AKS cluster
+
+First, fetch the cluster credentials so `kubectl` can talk to your AKS cluster:
+
+```bash
+az aks get-credentials -g=rg-tflocal-test-weu --name=aks-tflocal-test-weu
+```
+
+This merges the cluster's credentials into your local kubeconfig, so any subsequent `kubectl` commands are executed against this cluster.
+
+## Install ArgoCD
+
+Following the [official getting started guide](https://argo-cd.readthedocs.io/en/stable/getting_started/), create a dedicated namespace for ArgoCD and apply the installation manifest:
+
+```bash
+kubectl create namespace argocd
+
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+This deploys all the core ArgoCD components — the API server, repository server, application controller, and Redis — into the `argocd` namespace.
+
+## Expose the ArgoCD server
+
+By default, the `argocd-server` service is only reachable from inside the cluster. To access the UI and CLI from outside, patch the service to use a `LoadBalancer` type:
+
+```bash
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+```
+
+Azure will provision a public IP for this load balancer. You can retrieve it with:
+
+```bash
+kubectl get svc argocd-server -n argocd -o=jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
+
+> **Note:** Exposing ArgoCD this way puts it on a public IP with no TLS and no ingress rules in front of it. This is fine for a quick local test, but it's not a setup you want to leave running — treat it as temporary until you've configured proper ingress and HTTPS (covered in the next guide).
+
+## Install the ArgoCD CLI
+
+With the server reachable, install the ArgoCD CLI locally. On Windows, this can be done with `winget`:
+
+```bash
+winget install argoproj.argocd
+```
+
+For other platforms, see the [official CLI installation instructions](https://argo-cd.readthedocs.io/en/stable/cli_installation/).
+
+## Log in to ArgoCD
+
+ArgoCD generates an initial admin password on install, stored as a Kubernetes secret. Retrieve it with:
+
+```bash
+argocd admin initial-password -n argocd
+```
+
+Copy the password, then log in using the CLI and the public IP from earlier. Since we haven't set up TLS yet, the `--insecure` flag is required:
+
+```bash
+argocd login <IP-address> --insecure
+```
+
+Once authenticated, you should change the password right away — either through the CLI:
+
+```bash
+argocd account update-password
+```
+
+or via the ArgoCD UI under **User Info → Update Password**.
+
+## What's next
+
+At this point you have a working, reachable ArgoCD instance. From here you can already connect it to a GitHub repository and start deploying applications, either through the UI or the CLI. But before doing that in anything beyond a test environment, you'll want to lock things down and connect ArgoCD to your identity provider.
+
+The next guide covers:
+
+- Installing `ingress-nginx`
+- Exposing ArgoCD behind an Ingress instead of a public LoadBalancer
+- Enabling TLS certificates
+- Configuring Entra ID SSO
+- Connecting ArgoCD to GitHub
+- Using ApplicationSets
+- Deploying Helm charts through GitOps
+- Configuring Azure Workload Identity
+
+You can read more about securing ArgoCD with ingress and TLS in the [official ingress documentation](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/) in the meantime.

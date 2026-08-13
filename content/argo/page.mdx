@@ -1,0 +1,221 @@
+---
+title: Expose ArgoCD with Ingress & TLS, Then Hand It Over to GitOps
+date: 2026-08-13
+excerpt: With ArgoCD installed and reachable via a raw LoadBalancer IP, it's time to put it behind a proper Ingress with a real TLS certificate and then, fittingly, hand that very setup over to ArgoCD itself to manage.
+---
+
+In the [previous guide](/blog/aks), we provisioned an AKS cluster with Terraform and got ArgoCD running, reachable over a plain HTTP LoadBalancer IP with `--insecure` sprinkled through every command. That's fine for a first login, but not something to leave running.
+
+This guide covers putting ArgoCD behind an NGINX Ingress with a real Let's Encrypt certificate, walks through a networking gotcha that's easy to lose an afternoon to, and finishes by handing the whole platform layer, ingress-nginx and cert-manager included, over to ArgoCD itself. From that point on, the cluster manages its own infrastructure through Git.
+
+## Prerequisites
+
+- The AKS cluster and ArgoCD install from the previous guide, still running
+- [Helm](https://helm.sh/) installed locally
+
+If you don't have Helm yet:
+
+```bash
+winget install Helm.Helm
+```
+
+## Install ingress-nginx
+
+Add an NGINX ingress controller to the cluster, this is what will route external traffic to ArgoCD (and to anything else you deploy later) based on hostname, instead of every service needing its own LoadBalancer and public IP:
+
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.type=LoadBalancer
+```
+
+Azure provisions a public IP for this LoadBalancer service. Grab it:
+
+```bash
+kubectl get svc ingress-nginx-controller -n ingress-nginx -o=jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
+
+For this guide, that IP is `108.142.41.203`. Since there's no domain involved, we lean on [nip.io](https://nip.io) for hostnames: `argocd.108.142.41.203.nip.io` resolves straight to `108.142.41.203` with zero DNS setup, which is all a service like Let's Encrypt needs to verify ownership later.
+
+## Move ArgoCD behind the Ingress
+
+The LoadBalancer service from the previous guide did its job getting ArgoCD reachable for a first login, but now that there's an ingress controller in front of the cluster, revert `argocd-server` back to `ClusterIP`, the Ingress takes over external access from here:
+
+```bash
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "ClusterIP"}}'
+```
+
+ArgoCD's server talks gRPC over HTTPS by default, which doesn't play nicely with an ingress that's about to terminate TLS itself. The simplest fix is telling ArgoCD to serve plain HTTP internally and let the ingress handle HTTPS:
+
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{"data":{"server.insecure":"true"}}'
+
+kubectl rollout restart deployment argocd-server -n argocd
+```
+
+Then apply the Ingress resource, it routes `argocd.108.142.41.203.nip.io` to the `argocd-server` service on port 80):
+
+```yaml:title=argo-cd-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.<IP-ADDRESS>.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - argocd.<IP-ADDRESS>.nip.io
+      secretName: argocd-server-tls
+```
+
+
+```bash
+kubectl apply -f .\argo-cd-ingress.yaml
+```
+
+## Enable TLS with cert-manager
+
+Install cert-manager, which will handle requesting and renewing certificates automatically:
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --set crds.enabled=true
+```
+
+Then create a `ClusterIssuer` pointing at Let's Encrypt, it uses the HTTP-01 challenge type against the `nginx` ingress class):
+
+
+```yaml:title=cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: <your-email@example.com>
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+```
+
+```bash
+kubectl apply -f cluster-issuer.yaml
+```
+
+Once the Ingress from the previous step is live and annotated with `cert-manager.io/cluster-issuer`, cert-manager picks it up, requests a certificate, and works through the ACME challenge automatically. Watch it progress:
+
+```bash
+kubectl get certificate -n argocd
+kubectl describe certificate argocd-server-tls -n argocd
+```
+
+Once `READY` shows `True`, ArgoCD is reachable over HTTPS with a real, browser-trusted certificate, no more `--insecure` anywhere:
+
+```bash
+argocd login argocd.108.142.41.203.nip.io
+```
+
+## Troubleshooting: the health probe gotcha
+
+Getting to `READY: True` above may not be a straight line, and it's worth walking through the specific way this can fail, because the symptoms are misleading.
+
+If the certificate sits at `READY: False` and the order shows `invalid`, the underlying ACME error frequently comes back as a **connection timeout**, something like:
+
+```
+Fetching http://argocd.<ip>.nip.io/.well-known/acme-challenge/...: Timeout during connect (likely firewall problem)
+```
+
+That message points at a firewall, but on AKS the actual cause is often something else entirely: **Azure's auto-provisioned Load Balancer defaults to health-checking `/` over plain HTTP**, and treats anything outside the 200–399 range as unhealthy. Since nginx correctly returns a `404` on `/` when nothing's routed there, the Load Balancer marks the whole backend unhealthy and silently drops *all* external traffic to it, while traffic from inside the cluster keeps working perfectly, since it never touches the Load Balancer at all. That mismatch (internal fine, external times out) is the tell.
+
+You can confirm this is what's happening by checking the probe Azure actually configured:
+
+```bash
+az network lb probe list -g <node-resource-group> --lb-name kubernetes -o table
+```
+
+If `RequestPath` shows `/` instead of a dedicated health endpoint, that's the issue. The fix is pointing the probe at ingress-nginx's actual health check endpoint instead:
+
+```bash
+helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --reuse-values --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+```
+
+Give Azure a minute to recreate the probe, confirm external reachability comes back (`curl -v http://<ip>/` should now respond instead of timing out), then clear out the failed request so cert-manager retries immediately instead of waiting out its backoff:
+
+```bash
+kubectl delete certificaterequest argocd-server-tls-1 -n argocd
+```
+
+A fresh request and order get created automatically, and, assuming the network path is genuinely fixed, the certificate should land on `READY: True` within a minute or two.
+
+## Hand the platform over to ArgoCD
+
+Everything so far has been installed by hand, which was unavoidable: ArgoCD can't manage its own path to becoming reachable before it *is* reachable. But now that it's up, trusted, and working, the more correct move is to stop treating ingress-nginx and cert-manager as things you manage from a terminal, and instead let ArgoCD manage them the same way it'll manage everything else.
+
+Two small `Application` manifests do this, one for each Helm chart already installed, using the same values that are already running (health probe fix included, so a redeploy can't reintroduce the bug from the previous section):
+
+```yaml:title=ingress-nginx-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: 4.11.3
+    helm:
+      values: |
+        controller:
+          service:
+            type: LoadBalancer
+            annotations:
+              service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+
+`platform/cert-manager.yaml` follows the same shape, pointed at the Jetstack chart repo instead.
+
+Apply both, this is the actual handoff moment, and the last `kubectl apply` these two components will ever need:
+
+```bash
+kubectl apply -f platform/ingress-nginx-app.yaml
+kubectl apply -f platform/cert-manager.yaml
+```
+
+Open the ArgoCD UI and both should show up as new Applications, syncing against the Helm releases that already exist in the cluster. Since the values match what's already deployed, ArgoCD adopts them cleanly `Synced` and `Healthy` without changing anything on the cluster.
+
+## What's next
+
+At this point, the platform layer, ingress, TLS, and ArgoCD's own reachability is fully GitOps-managed. Any future version bump to ingress-nginx or cert-manager is a Git commit, not a terminal command.
+
+From here, the same pattern extends to actual workloads: a simple `Application` pointing at a folder of plain manifests is enough to get a first deployment running end-to-end through ArgoCD, which is exactly what the next guide covers, before moving on to real, custom-built images pushed to ACR and deployed the same way.
